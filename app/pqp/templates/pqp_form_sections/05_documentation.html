@@ -1,0 +1,32 @@
+{# app/pqp/templates/pqp_form_sections/05_documentation.html #}
+<div class="card mb-4">
+  <div class="card-header bg-warning text-white">
+    <h5 class="mb-0">Section 5: Documentation & Tender</h5>
+  </div>
+  <div class="card-body">
+    <div class="form-group">
+      <label for="tender_instructions">Tender Instructions</label>
+      <textarea name="tender_instructions" id="tender_instructions" class="form-control" rows="4" required>{{ pqp_detail.tender_instructions or '' }}</textarea>
+    </div>
+
+    <div class="form-group mt-3">
+      <label for="tender_status">Tender Status</label>
+      <select name="tender_status" id="tender_status" class="form-control" required>
+        <option value="">-- Select Status --</option>
+        <option value="Not Started" {{ 'selected' if pqp_detail.tender_status == 'Not Started' else '' }}>Not Started</option>
+        <option value="In Progress" {{ 'selected' if pqp_detail.tender_status == 'In Progress' else '' }}>In Progress</option>
+        <option value="Completed" {{ 'selected' if pqp_detail.tender_status == 'Completed' else '' }}>Completed</option>
+      </select>
+    </div>
+
+    <div class="form-group mt-3">
+      <label for="tender_uploaded_file">Upload Tender Document</label>
+      <input type="file" name="tender_uploaded_file" id="tender_uploaded_file" class="form-control-file">
+      {% if pqp_detail.tender_uploaded_file %}
+        <small class="form-text text-success">
+          Current file: <a href="{{ url_for('static', filename='pqp/uploads/' ~ pqp_detail.tender_uploaded_file) }}" target="_blank">{{ pqp_detail.tender_uploaded_file }}</a>
+        </small>
+      {% endif %}
+    </div>
+  </div>
+</div>

@@ -1,0 +1,299 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="container-fluid">
+
+<div class="d-flex justify-content-between align-items-center mb-4">
+  <h3 class="mb-0">PQP Dashboard</h3>
+</div>
+
+
+
+  <!-- Summary Tiles -->
+  <div class="row g-3 mb-4">
+    <div class="col-12 col-sm-6 col-xl-3">
+      <div class="card text-white bg-primary shadow-sm h-100">
+        <div class="card-body">
+          <div class="d-flex justify-content-between align-items-center">
+            <h6 class="text-uppercase mb-0">Total PQPs</h6>
+            <i class="bi bi-folder2-open fs-4 opacity-75"></i>
+          </div>
+          <h2 class="mt-2 mb-0">{{ (stats.total_projects if stats is defined and 'total_projects' in stats else (projects|length if projects is defined else 0)) }}</h2>
+        </div>
+      </div>
+    </div>
+    <div class="col-12 col-sm-6 col-xl-3">
+      <div class="card text-white bg-success shadow-sm h-100">
+        <div class="card-body">
+          <div class="d-flex justify-content-between align-items-center">
+            <h6 class="text-uppercase mb-0">Avg Completion</h6>
+            <i class="bi bi-graph-up fs-4 opacity-75"></i>
+          </div>
+          <h2 class="mt-2 mb-0">
+            {{ (stats.avg_completion if stats is defined and 'avg_completion' in stats else 0) }}%
+          </h2>
+        </div>
+      </div>
+    </div>
+    <div class="col-12 col-sm-6 col-xl-3">
+      <div class="card text-white bg-warning shadow-sm h-100">
+        <div class="card-body">
+          <div class="d-flex justify-content-between align-items-center">
+            <h6 class="text-uppercase mb-0">Up-to-Date</h6>
+            <i class="bi bi-calendar-check fs-4 opacity-75"></i>
+          </div>
+          <h2 class="mt-2 mb-0">
+            {{ (stats.up_to_date if stats is defined and 'up_to_date' in stats else 0) }}
+          </h2>
+        </div>
+      </div>
+    </div>
+    <div class="col-12 col-sm-6 col-xl-3">
+      <div class="card text-white bg-danger shadow-sm h-100">
+        <div class="card-body">
+          <div class="d-flex justify-content-between align-items-center">
+            <h6 class="text-uppercase mb-0">Overdue</h6>
+            <i class="bi bi-exclamation-triangle fs-4 opacity-75"></i>
+          </div>
+          <h2 class="mt-2 mb-0">
+            {{ (stats.overdue if stats is defined and 'overdue' in stats else 0) }}
+          </h2>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Filters -->
+  <div class="card mb-4">
+    <div class="card-body">
+      <form class="row g-2 align-items-end" method="get" action="">
+        <div class="col-md-4">
+          <label class="form-label">Project</label>
+          <input type="text" class="form-control" name="q" value="{{ request.args.get('q','') if request is defined else '' }}" placeholder="Search project name">
+        </div>
+        <div class="col-md-3">
+          <label class="form-label">Section</label>
+          <select class="form-select" name="section">
+            <option value="">All Sections</option>
+            {% set _sections = sections if sections is defined and sections else [
+              '1. Project Overview','2. Project Team','3. Appointment & Milestones',
+              '4. Planning & Design','5. Documentation & Procurement',
+              '6. Works & Handover','7. Additional Services','8. Close-out & Feedback'
+            ] %}
+            {% for s in _sections %}
+              <option value="{{ s }}" {{ 'selected' if request is defined and request.args.get('section') == s else '' }}>{{ s }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-md-2">
+          <label class="form-label">Status</label>
+          <select class="form-select" name="status">
+            {% set _st = (request.args.get('status') if request is defined else '') %}
+            <option value="" {{ 'selected' if _st == '' else '' }}>All</option>
+            <option value="Completed" {{ 'selected' if _st == 'Completed' else '' }}>Completed</option>
+            <option value="In Progress" {{ 'selected' if _st == 'In Progress' else '' }}>In Progress</option>
+            <option value="Overdue" {{ 'selected' if _st == 'Overdue' else '' }}>Overdue</option>
+          </select>
+        </div>
+        <div class="col-md-2">
+          <label class="form-label">Risk</label>
+          <select class="form-select" name="risk">
+            {% set _rk = (request.args.get('risk') if request is defined else '') %}
+            <option value="" {{ 'selected' if _rk == '' else '' }}>All</option>
+            <option value="Low" {{ 'selected' if _rk == 'Low' else '' }}>Low</option>
+            <option value="Medium" {{ 'selected' if _rk == 'Medium' else '' }}>Medium</option>
+            <option value="High" {{ 'selected' if _rk == 'High' else '' }}>High</option>
+          </select>
+        </div>
+        <div class="col-md-1 d-grid">
+          <button class="btn btn-outline-primary">Apply</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Completion by Section -->
+  <div class="card mb-4">
+    <div class="card-header fw-bold">Section Completion by Project</div>
+    <div class="card-body" style="height: 360px;">
+      <canvas id="completionChart"></canvas>
+    </div>
+  </div>
+
+  <!-- Risk Heatmap -->
+  <div class="card mb-4">
+    <div class="card-header fw-bold">Risk Heatmap</div>
+    <div class="card-body" style="height: 320px;">
+      <canvas id="riskHeatmap"></canvas>
+    </div>
+  </div>
+
+  <!-- Milestones -->
+  <div class="card mb-4">
+    <div class="card-header fw-bold">Upcoming & Overdue Milestones</div>
+    <div class="table-responsive">
+      <table class="table table-sm table-hover align-middle mb-0">
+        <thead class="table-light">
+          <tr>
+            <th>Project</th>
+            <th>Section</th>
+            <th>Milestone</th>
+            <th>Due Date</th>
+            <th>Status</th>
+            <th>Assigned To</th>
+            <th class="text-end">Action</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% if milestones is defined and milestones %}
+            {% for m in milestones %}
+            <tr class="{{ 'table-danger' if m.status == 'Overdue' else '' }}">
+              <td>{{ m.project }}</td>
+              <td>{{ m.section }}</td>
+              <td>{{ m.name }}</td>
+              <td>{{ m.due_date }}</td>
+              <td>{{ m.status }}</td>
+              <td>{{ m.assignee }}</td>
+              <td class="text-end">
+                <a href="{{ url_for('pqp.pqp_form', project_id=m.project_id) }}" class="btn btn-sm btn-outline-primary">Open</a>
+              </td>
+            </tr>
+            {% endfor %}
+          {% else %}
+            <tr><td colspan="7" class="text-muted text-center py-4">No upcoming or overdue milestones.</td></tr>
+          {% endif %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Document Tracker -->
+  <div class="card mb-5">
+    <div class="card-header fw-bold">Document & Deliverable Tracker</div>
+    <div class="table-responsive">
+      <table class="table table-sm table-hover align-middle mb-0">
+        <thead class="table-light">
+          <tr>
+            <th>Project</th>
+            <th>Section</th>
+            <th>Document</th>
+            <th>Status</th>
+            <th>Last Updated</th>
+            <th class="text-end">Link</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% if documents is defined and documents %}
+            {% for d in documents %}
+            <tr>
+              <td>{{ d.project }}</td>
+              <td>{{ d.section }}</td>
+              <td>{{ d.name }}</td>
+              <td>
+                {% set st = (d.status or '')|lower %}
+                <span class="badge
+                    {{ 'bg-success' if st == 'completed' else
+                       'bg-warning text-dark' if st == 'in progress' else
+                       'bg-secondary' }}">{{ d.status }}</span>
+              </td>
+              <td>{{ d.updated }}</td>
+              <td class="text-end">
+                {% if d.file_url %}
+                  <a href="{{ d.file_url }}" target="_blank" class="btn btn-sm btn-outline-secondary">View</a>
+                {% else %}
+                  <span class="text-muted">—</span>
+                {% endif %}
+              </td>
+            </tr>
+            {% endfor %}
+          {% else %}
+            <tr><td colspan="6" class="text-muted text-center py-4">No documents tracked yet.</td></tr>
+          {% endif %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Fallback table (quick access) -->
+  <div class="card mb-5">
+    <div class="card-header fw-bold">All Projects</div>
+    <div class="table-responsive">
+      <table class="table table-striped align-middle mb-0">
+        <thead>
+          <tr>
+            <th style="width: 80px;">ID</th>
+            <th>Project</th>
+            <th class="text-end">Open</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% if projects is defined and projects %}
+            {% for p in projects %}
+            <tr>
+              <td>{{ p.id }}</td>
+              <td>{{ p.name }}</td>
+              <td class="text-end">
+                <a class="btn btn-sm btn-outline-primary" href="{{ url_for('pqp.pqp_form', project_id=p.id) }}">Open PQP</a>
+              </td>
+            </tr>
+            {% endfor %}
+          {% else %}
+            <tr><td colspan="3" class="text-center text-muted py-4">No projects yet — create one using the form at the top.</td></tr>
+          {% endif %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+</div>
+
+<!-- Charts -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+  // Safe JSON from Jinja → JS
+  const chartLabels   = JSON.parse('{{ chart_labels   | default([], true) | tojson | safe }}');
+  const chartDatasets = JSON.parse('{{ chart_datasets | default([], true) | tojson | safe }}');
+  const riskLabels    = JSON.parse('{{ risk_labels    | default([], true) | tojson | safe }}');
+  const riskDatasets  = JSON.parse('{{ risk_datasets  | default([], true) | tojson | safe }}');
+
+  const _labels   = Array.isArray(chartLabels)   ? chartLabels   : [];
+  const _datasets = Array.isArray(chartDatasets) ? chartDatasets : [];
+  const _riskL    = Array.isArray(riskLabels)    ? riskLabels    : [];
+  const _riskD    = Array.isArray(riskDatasets)  ? riskDatasets  : [];
+
+  // Completion (stacked)
+  const completionCtx = document.getElementById('completionChart');
+  if (completionCtx) {
+    new Chart(completionCtx, {
+      type: 'bar',
+      data: { labels: _labels, datasets: _datasets },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { position: 'bottom' } },
+        scales: {
+          x: { stacked: true, ticks: { autoSkip: false } },
+          y: { stacked: true, beginAtZero: true, suggestedMax: 100, title: { display: true, text: '%' } }
+        }
+      }
+    });
+  }
+
+  // Risk heatmap (stacked counts by severity)
+  const riskCtx = document.getElementById('riskHeatmap');
+  if (riskCtx) {
+    new Chart(riskCtx, {
+      type: 'bar',
+      data: { labels: _riskL, datasets: _riskD },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { position: 'bottom' } },
+        scales: {
+          x: { stacked: true, ticks: { autoSkip: false } },
+          y: { stacked: true, beginAtZero: true, title: { display: true, text: 'Risk items' } }
+        }
+      }
+    });
+  }
+</script>
+{% endblock %}

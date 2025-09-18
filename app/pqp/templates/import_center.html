@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+{% block title %}Import Center{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+  <h3 class="mb-3">AI Import Center</h3>
+
+  <!-- Root carries the API URLs so JS doesn't hardcode paths -->
+  <div id="ai-root"
+       data-preview-url="{{ url_for('pqp.pqp_ai_import_preview') }}"
+       data-commit-url="{{ url_for('pqp.pqp_ai_import_commit') }}">
+  </div>
+
+  <div class="card">
+    <div class="card-header fw-bold d-flex align-items-center gap-2">
+      AI Workbook Import (.xlsx)
+      <span class="text-muted small">(select one or many workbooks; preview before committing)</span>
+    </div>
+    <div class="card-body">
+
+      <!-- Controls -->
+      <div class="d-flex flex-wrap gap-2 mb-3">
+        <button id="aiChoose" type="button" class="btn btn-primary">Choose Workbooks</button>
+        <button id="aiPreview" type="button" class="btn btn-outline-secondary">Preview Selected</button>
+        <button id="aiCommit" type="button" class="btn btn-success">Commit Checked</button>
+        <input id="aiFiles" type="file" class="d-none" accept=".xlsx,.xlsm" multiple>
+      </div>
+
+      <!-- Table -->
+      <div class="table-responsive">
+        <table id="aiTable" class="table table-sm table-striped align-middle">
+          <thead class="table-dark">
+            <tr>
+              <th style="width:1%"><input id="checkAll" type="checkbox"></th>
+              <th>Filename</th>
+              <th>Detected Code</th>
+              <th style="width:220px;">Override Code</th>
+              <th style="width:140px;">Status</th>
+              <th>Issues</th>
+              <th style="width:180px;">Actions</th>
+            </tr>
+          </thead>
+          <tbody id="aiTbody">
+            <tr><td colspan="7" class="text-muted">No files selected.</td></tr>
+          </tbody>
+        </table>
+
+        <!-- optional mini log -->
+        <div id="aiLog" class="small mt-2"></div>
+          
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<!-- AI Import JS -->
+<script>
+  (function () {
+    var root = document.getElementById('ai-root');
+    window.PQP_AI_ENDPOINTS = {
+      preview: root?.dataset.previewUrl,
+      commit:  root?.dataset.commitUrl
+    };
+  })();
+</script>
+
+
+<!-- Load the Import JS -->
+<script src="{{ url_for('static', filename='js/pqp_ai.js') }}"></script>
+{% endblock %}
+
+
+<input id="pqp-files" type="file" multiple accept=".xlsx,.xlsm" hidden>
+<button id="choose-files" type="button" class="btn btn-primary">Choose Workbooks</button>
+<button id="bulk-import" type="button" class="btn btn-success">Bulk Import</button>

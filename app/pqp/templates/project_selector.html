@@ -1,0 +1,196 @@
+{% extends "base.html" %}
+
+{% block title %}Project Selector{% endblock %}
+
+{% block content %}
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h2 class="mb-0">Project Selector</h2>
+  <button class="btn btn-success" data-bs-toggle="modal" data-bs-target="#newProjectModal">New Project</button>
+</div>
+
+<!-- New Project Modal -->
+<div class="modal fade" id="newProjectModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <form id="newProjectForm">
+        <div class="modal-header">
+          <h5 class="modal-title">Create New Project</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+          <div class="mb-2">
+            <label class="form-label">Project Code *</label>
+            <input name="code" class="form-control" required>
+            <div id="codeHelp" class="form-text text-muted">Must be unique. Digits are checked even if letters differ.</div>
+            <div id="codeDup" class="small text-danger d-none">Duplicate code detected.</div>
+          </div>
+          <div class="mb-2">
+            <label class="form-label">Name / Short Description *</label>
+            <input name="name" class="form-control" required>
+          </div>
+          <div class="row g-2">
+            <div class="col-md-6">
+              <label class="form-label">Client</label>
+              <input name="client" class="form-control">
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">Manager</label>
+              <input name="manager" class="form-control">
+            </div>
+          </div>
+          <div class="row g-2 mt-1">
+            <div class="col-md-6">
+              <label class="form-label">Start Date</label>
+              <input name="start_date" type="date" class="form-control">
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">End Date</label>
+              <input name="end_date" type="date" class="form-control">
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+          <button type="button" class="btn btn-primary" onclick="createProject()">Create</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<script>
+async function checkCodeUnique(code){
+  const u = new URL("{{ url_for('pqp.project_code_check') }}", window.location.origin);
+  u.searchParams.set("code", code||"");
+  const r = await fetch(u); const j = await r.json();
+  return !(j.duplicate); // true if unique
+}
+
+async function createProject(){
+  const f = document.getElementById('newProjectForm');
+  const code = f.code.value.trim();
+  if(!code){ alert('Project Code is required'); return; }
+
+  const codeDupEl = document.getElementById('codeDup');
+  codeDupEl.classList.add('d-none');
+  const unique = await checkCodeUnique(code);
+  if(!unique){
+    codeDupEl.classList.remove('d-none');
+    return;
+  }
+
+  const fd = new FormData(f);
+  const res = await fetch("{{ url_for('pqp.project_create') }}", { method:'POST', body: fd });
+  const j = await res.json();
+  if(!j.ok){ alert('Create failed: ' + (j.error || 'unknown')); return; }
+
+  // go straight to edit page for full details
+  window.location.href = "{{ url_for('pqp.project_edit', code='__CODE__') }}".replace('__CODE__', encodeURIComponent(code));
+}
+</script>
+
+
+
+  <form class="row g-2 mb-3" method="get" action="{{ url_for('pqp.pqp_form_select_by_code') }}">
+    <div class="col-md-4">
+      <input name="code" value="{{ request.args.get('code','') }}" class="form-control" placeholder="Code">
+    </div>
+    <div class="col-auto">
+      <button class="btn btn-primary">Search</button>
+    </div>
+    <div class="col-auto">
+      <a class="btn btn-secondary" href="{{ url_for('pqp.pqp_form_select_by_code') }}">Reset</a>
+    </div>
+  </form>
+
+  <div class="table-responsive">
+    <table class="table table-sm table-striped align-middle pq-table">
+      <thead>
+        <tr>
+          <th>Code</th>
+          <th>Name</th>
+          <th>Client</th>
+          <th>Manager</th>
+          <th>Start</th>
+          <th>End</th>
+          <th style="width:1%;">Action</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% if project_options and project_options|length > 0 %}
+          {% for p in project_options %}
+            {# Normalize fields so it works for dicts OR ORM objects #}
+            {% set code = (
+              p.code if (p is not mapping and p.code is defined) else
+              (p['code'] if (p is mapping and 'code' in p) else
+              (p['Code'] if (p is mapping and 'Code' in p) else ''))
+            ) %}
+            {% set name = (
+              p.short if (p is not mapping and p.short is defined) else
+              (p.short_name if (p is not mapping and p.short_name is defined) else
+              (p['short'] if (p is mapping and 'short' in p) else
+              (p['short_name'] if (p is mapping and 'short_name' in p) else
+              (p['Short Name'] if (p is mapping and 'Short Name' in p) else
+              (p['Short Description'] if (p is mapping and 'Short Description' in p) else '')))))
+            ) %}
+            {% set client = (
+              p.client if (p is not mapping and p.client is defined) else
+              (p['client'] if (p is mapping and 'client' in p) else
+              (p['Client'] if (p is mapping and 'Client' in p) else
+              (p['Client Organisation'] if (p is mapping and 'Client Organisation' in p) else '')))
+            ) %}
+            {% set manager = (
+              p.pm if (p is not mapping and p.pm is defined) else
+              (p.manager if (p is not mapping and p.manager is defined) else
+              (p['pm'] if (p is mapping and 'pm' in p) else
+              (p['Manager'] if (p is mapping and 'Manager' in p) else
+              (p['Primary Contact Name'] if (p is mapping and 'Primary Contact Name' in p) else ''))))
+            ) %}
+            {% set start = (
+              p.start if (p is not mapping and p.start is defined) else
+              (p['start'] if (p is mapping and 'start' in p) else
+              (p['Start'] if (p is mapping and 'Start' in p) else
+              (p['Start Date'] if (p is mapping and 'Start Date' in p) else '')))
+            ) %}
+            {% set end = (
+              p.end if (p is not mapping and p.end is defined) else
+              (p['end'] if (p is mapping and 'end' in p) else
+              (p['End'] if (p is mapping and 'End' in p) else
+              (p['End Date'] if (p is mapping and 'End Date' in p) else '')))
+            ) %}
+
+            {# Skip rendering rows that somehow have no code #}
+            {% if code %}
+              <tr>
+                <td>{{ code }}</td>
+                <td>{{ name }}</td>
+                <td>{{ client }}</td>
+                <td>{{ manager }}</td>
+                <td>{{ start }}</td>
+                <td>{{ end }}</td>
+                <td class="text-nowrap">
+                  <a class="btn btn-sm btn-primary"
+                    href="{{ url_for('pqp.pqp_form_by_code', code=code) }}">
+                    Open PQP
+                  </a>
+                  <a class="btn btn-sm qp-btn-ghost"
+                    href="{{ url_for('pqp.project_edit', code=code) }}">
+                    Edit
+                  </a>
+                </td>
+
+              </tr>
+            {% endif %}
+          {% endfor %}
+        {% else %}
+          <tr>
+            <td colspan="7" class="text-center text-muted">No matching projects found.</td>
+          </tr>
+        {% endif %}
+      </tbody>
+
+    </table>
+  </div>
+</div>
+{% endblock %}

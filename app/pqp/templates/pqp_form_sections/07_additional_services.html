@@ -1,0 +1,20 @@
+{# app/pqp/templates/pqp_form_sections/07_additional_services.html #}
+<div class="card mb-4">
+  <div class="card-header bg-secondary text-white">
+    <h5 class="mb-0">Section 7: Additional Services</h5>
+  </div>
+  <div class="card-body">
+    <div class="form-group">
+      <label for="extras_description">Description of Additional Services</label>
+      <textarea name="extras_description" id="extras_description" class="form-control" rows="4">{{ pqp_detail.extras_description or '' }}</textarea>
+    </div>
+
+    <div class="form-check mt-3">
+      <input class="form-check-input" type="checkbox" value="true" name="extras_approved" id="extras_approved" {% if pqp_detail.extras_approved %}checked{% endif %}>
+      <label class="form-check-label" for="extras_approved">
+        Additional Services Approved
+      </label>
+    </div>
+  </div>
+</div>
+

@@ -1,0 +1,23 @@
+{# app/pqp/templates/pqp_form_sections/09_scope_register.html #}
+<div class="card mb-4">
+  <div class="card-header bg-secondary text-white">
+    <h5 class="mb-0">Section 9: Scope Register</h5>
+  </div>
+  <div class="card-body">
+    <div class="form-group">
+      <label for="scope_notes">Scope Clarifications and Notes</label>
+      <textarea name="scope_notes" id="scope_notes" class="form-control" rows="5" required>{{ pqp_detail.scope_notes or '' }}</textarea>
+    </div>
+
+    <div class="form-group mt-3">
+      <label for="scope_uploaded_file">Upload Scope Register</label>
+      <input type="file" name="scope_uploaded_file" id="scope_uploaded_file" class="form-control-file">
+      {% if pqp_detail.scope_uploaded_file %}
+        <small class="form-text text-success">
+          Current file: <a href="{{ url_for('static', filename='pqp/uploads/' ~ pqp_detail.scope_uploaded_file) }}" target="_blank">{{ pqp_detail.scope_uploaded_file }}</a>
+        </small>
+      {% endif %}
+    </div>
+  </div>
+</div>
+

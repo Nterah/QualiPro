@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>PQP Dashboard</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <style>
+    .tab-content { padding-top: 1rem; }
+    textarea.form-control { min-height: 100px; }
+  </style>
+</head>
+<body class="bg-light">
+
+<div class="container mt-4">
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <h3>📋 Project Quality Plan Dashboard</h3>
+    <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addProjectModal">➕ New Project</button>
+  </div>
+
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+      {% for category, message in messages %}
+        <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
+          {{ message }}
+          <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        </div>
+      {% endfor %}
+    {% endif %}
+  {% endwith %}
+
+  {% for p in projects %}
+    <div class="card mb-4 shadow-sm">
+      <div class="card-header d-flex justify-content-between align-items-center">
+        <strong>{{ p.project_code }} – {{ p.name }}</strong>
+        <div>
+          <button class="btn btn-sm btn-outline-primary" data-bs-toggle="modal" data-bs-target="#editProjectModal{{ p.id }}">Edit</button>
+          <a href="{{ url_for('pqp.delete_project', pid=p.id) }}" class="btn btn-sm btn-outline-danger">Delete</a>
+        </div>
+      </div>
+      <div class="card-body">
+        <p><strong>Client:</strong> {{ p.client }} | <strong>Manager:</strong> {{ p.manager }}</p>
+        <p><strong>Start:</strong> {{ p.start_date }} | <strong>End:</strong> {{ p.end_date }}</p>
+
+        <ul class="nav nav-tabs" id="tab-{{ p.id }}" role="tablist">
+          {% for i in range(1, 10) %}
+            <li class="nav-item" role="presentation">
+              <button class="nav-link {% if loop.first %}active{% endif %}" data-bs-toggle="tab"
+                      data-bs-target="#section{{ i }}-{{ p.id }}">Section {{ i }}</button>
+            </li>
+          {% endfor %}
+        </ul>
+
+        <div class="tab-content border rounded border-top-0 p-3">
+          <form method="POST" enctype="multipart/form-data" action="{{ url_for('pqp.save_pqp_sections', project_id=p.id) }}">
+            <!-- SECTION 1: Overview -->
+            <div class="tab-pane fade show active" id="section1-{{ p.id }}">
+              <h6>1. Project Overview</h6>
+              <textarea name="overview_summary" class="form-control mb-2">{{ p.pqp_detail.overview_summary if p.pqp_detail else '' }}</textarea>
+              <label>Upload file:</label>
+              <input type="file" name="overview_uploaded_file" class="form-control">
+            </div>
+
+            <!-- SECTION 2: Team -->
+            <div class="tab-pane fade" id="section2-{{ p.id }}">
+              <h6>2. Project Team</h6>
+              <textarea name="team_description" class="form-control mb-2">{{ p.pqp_detail.team_description if p.pqp_detail else '' }}</textarea>
+              <div class="form-check">
+                <input class="form-check-input" type="checkbox" name="team_checklist_complete" id="teamChecklist{{ p.id }}"
+                  {% if p.pqp_detail and p.pqp_detail.team_checklist_complete %}checked{% endif %}>
+                <label class="form-check-label" for="teamChecklist{{ p.id }}">Checklist Complete</label>
+              </div>
+            </div>
+
+            <!-- SECTION 3: Appointment & Milestones -->
+            <div class="tab-pane fade" id="section3-{{ p.id }}">
+              <h6>3. Appointment & Milestones</h6>
+              <textarea name="appointment_milestones" class="form-control mb-2">{{ p.pqp_detail.appointment_milestones if p.pqp_detail else '' }}</textarea>
+              <label>Status:</label>
+              <select name="appointment_status" class="form-select mb-2">
+                {% for option in ['Drafted', 'Approved', 'Finalised'] %}
+                  <option {% if p.pqp_detail and p.pqp_detail.appointment_status == option %}selected{% endif %}>{{ option }}</option>
+                {% endfor %}
+              </select>
+              <label>Upload file:</label>
+              <input type="file" name="appointment_uploaded_file" class="form-control">
+            </div>
+
+            <!-- SECTION 4: Planning & Design -->
+            <div class="tab-pane fade" id="section4-{{ p.id }}">
+              <h6>4. Planning & Design</h6>
+              <textarea name="planning_notes" class="form-control mb-2">{{ p.pqp_detail.planning_notes if p.pqp_detail else '' }}</textarea>
+              <input type="file" name="planning_uploaded_file" class="form-control mb-2">
+              <div class="form-check">
+                <input class="form-check-input" type="checkbox" name="planning_verified" id="planVerify{{ p.id }}"
+                  {% if p.pqp_detail and p.pqp_detail.planning_verified %}checked{% endif %}>
+                <label class="form-check-label" for="planVerify{{ p.id }}">Verified</label>
+              </div>
+            </div>
+
+            <!-- SECTION 5: Documentation & Tender -->
+            <div class="tab-pane fade" id="section5-{{ p.id }}">
+              <h6>5. Documentation & Tender</h6>
+              <textarea name="tender_instructions" class="form-control mb-2">{{ p.pqp_detail.tender_instructions if p.pqp_detail else '' }}</textarea>
+              <label>Status:</label>
+              <select name="tender_status" class="form-select mb-2">
+                {% for option in ['Not Started', 'In Progress', 'Completed'] %}
+                  <option {% if p.pqp_detail and p.pqp_detail.tender_status == option %}selected{% endif %}>{{ option }}</option>
+                {% endfor %}
+              </select>
+              <input type="file" name="tender_uploaded_file" class="form-control">
+            </div>
+
+            <!-- SECTION 6: Works & Handover -->
+            <div class="tab-pane fade" id="section6-{{ p.id }}">
+              <h6>6. Works & Handover</h6>
+              <textarea name="works_plan" class="form-control mb-2">{{ p.pqp_detail.works_plan if p.pqp_detail else '' }}</textarea>
+              <input type="file" name="works_progress_photo" class="form-control mb-2">
+              <div class="form-check">
+                <input class="form-check-input" type="checkbox" name="works_checklist_complete" id="worksCheck{{ p.id }}"
+                  {% if p.pqp_detail and p.pqp_detail.works_checklist_complete %}checked{% endif %}>
+                <label class="form-check-label" for="worksCheck{{ p.id }}">Checklist Complete</label>
+              </div>
+            </div>
+
+            <!-- SECTION 7: Additional Services -->
+            <div class="tab-pane fade" id="section7-{{ p.id }}">
+              <h6>7. Additional Services</h6>
+              <textarea name="extras_description" class="form-control mb-2">{{ p.pqp_detail.extras_description if p.pqp_detail else '' }}</textarea>
+              <div class="form-check">
+                <input class="form-check-input" type="checkbox" name="extras_approved" id="extraApproved{{ p.id }}"
+                  {% if p.pqp_detail and p.pqp_detail.extras_approved %}checked{% endif %}>
+                <label class="form-check-label" for="extraApproved{{ p.id }}">Approved</label>
+              </div>
+            </div>
+
+            <!-- SECTION 8: Close-Out & Feedback -->
+            <div class="tab-pane fade" id="section8-{{ p.id }}">
+              <h6>8. Close-Out & Feedback</h6>
+              <textarea name="closeout_summary" class="form-control mb-2">{{ p.pqp_detail.closeout_summary if p.pqp_detail else '' }}</textarea>
+              <input type="file" name="closeout_uploaded_file" class="form-control mb-2">
+              <label>Feedback Rating:</label>
+              <select name="feedback_rating" class="form-select">
+                {% for option in ['Excellent', 'Good', 'Fair', 'Poor'] %}
+                  <option {% if p.pqp_detail and p.pqp_detail.feedback_rating == option %}selected{% endif %}>{{ option }}</option>
+                {% endfor %}
+              </select>
+            </div>
+
+            <!-- SECTION 9: Scope Register -->
+            <div class="tab-pane fade" id="section9-{{ p.id }}">
+              <h6>9. Scope Register</h6>
+              <textarea name="scope_notes" class="form-control mb-2">{{ p.pqp_detail.scope_notes if p.pqp_detail else '' }}</textarea>
+              <input type="file" name="scope_uploaded_file" class="form-control">
+            </div>
+
+            <div class="text-end pt-3">
+              <button class="btn btn-success">💾 Save PQP Sections</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+  {% endfor %}
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>

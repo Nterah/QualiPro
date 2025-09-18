@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% block title %}Help | PQP{% endblock %}
+{% block content %}
+<h3 class="mb-3">Help</h3>
+<p class="text-muted">Quick guide to the main areas.</p>
+<ul>
+  <li><strong>Project Selector</strong>: Search and open a project’s PQP by code.</li>
+  <li><strong>Import Center</strong>: Upload one or many PQP workbooks, preview mappings, then commit to the database.</li>
+  <li><strong>PQP Form</strong>: View/Edit a single project’s nine sections (add rows, import per section, export).</li>
+  <li><strong>Export Center</strong>: Download a ZIP of CSVs or an HTML summary for a project.</li>
+  <li><strong>Reminders</strong>: Send overdue emails (demo endpoint out-of-the-box).</li>
+  <li><strong>Settings</strong>: SMTP and export defaults.</li>
+</ul>
+<p class="text-muted small">Tip: you can print the HTML summary and “Save as PDF”.</p>
+{% endblock %}

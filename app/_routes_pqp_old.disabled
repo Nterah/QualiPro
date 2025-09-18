@@ -1,0 +1,87 @@
+# app/routes_pqp.py
+from flask import Blueprint, request, jsonify, current_app
+from sqlalchemy import text
+from . import db
+
+pqp_api_bp = Blueprint("pqp_api", __name__, url_prefix="/api/pqp")
+
+# ---------- debug / discovery ----------
+@pqp_api_bp.get("/_routes")
+def _routes():
+    out = []
+    for r in current_app.url_map.iter_rules():
+        if str(r).startswith("/api/pqp"):
+            methods = sorted(m for m in r.methods if m in {"GET", "POST", "PATCH", "DELETE"})
+            out.append({"rule": str(r), "methods": methods})
+    return jsonify(sorted(out, key=lambda x: x["rule"]))
+
+@pqp_api_bp.get("/ping")
+def ping():
+    return jsonify(ok=True)
+
+# ---------- projects ----------
+@pqp_api_bp.get("/projects")
+def list_projects():
+    rows = db.session.execute(
+        text("""
+            select id, name, org_id, created_at
+            from pqp.project
+            where org_id = :org
+            order by created_at desc
+        """),
+        {"org": current_app.config.get("ORG_ID")},
+    ).mappings().all()
+    return jsonify([dict(r) for r in rows])
+
+@pqp_api_bp.post("/projects")
+def create_project():
+    data = request.get_json(silent=True) or {}
+    name = (data.get("name") or "").strip()
+    if not name:
+        return jsonify(error="name is required"), 400
+
+    row = db.session.execute(
+        text("""
+            insert into pqp.project (name, org_id)
+            values (:name, :org)
+            returning id, name
+        """),
+        {"name": name, "org": current_app.config.get("ORG_ID")},
+    ).mappings().one()
+    db.session.commit()
+    return jsonify(id=row["id"], name=row["name"])
+
+# ---------- checklist for a project (INT project_id) ----------
+@pqp_api_bp.post("/projects/<int:project_id>/checklist")
+def add_checklist_item(project_id: int):
+    payload = request.get_json(silent=True) or {}
+    # support single item body {section,label}
+    try:
+        section = int(payload["section"])
+        label = str(payload["label"]).strip()
+    except Exception:
+        return jsonify(error="JSON body with integer 'section' and string 'label' required"), 400
+
+    row = db.session.execute(
+        text("""
+            insert into pqp.checklist_item (project_id, section, label, is_done, created_at)
+            values (:pid, :section, :label, false, now())
+            returning id, project_id, section, label, is_done, created_at
+        """),
+        {"pid": project_id, "section": section, "label": label},
+    ).mappings().one()
+    db.session.commit()
+    return jsonify(dict(row)), 201
+
+@pqp_api_bp.get("/projects/<int:project_id>/checklist")
+def list_checklist(project_id: int):
+    rows = db.session.execute(
+        text("""
+            select id, project_id, section, label, is_done, created_at
+            from pqp.checklist_item
+            where project_id = :pid
+            order by id
+        """),
+        {"pid": project_id},
+    ).mappings().all()
+    return jsonify([dict(r) for r in rows])

@@ -1,0 +1,28 @@
+{# app/pqp/templates/pqp_form_sections/04_planning.html #}
+<div class="card mb-4">
+  <div class="card-header bg-info text-white">
+    <h5 class="mb-0">Section 4: Planning & Design</h5>
+  </div>
+  <div class="card-body">
+    <div class="form-group">
+      <label for="planning_notes">Planning Notes</label>
+      <textarea name="planning_notes" id="planning_notes" class="form-control" rows="4" required>{{ pqp_detail.planning_notes or '' }}</textarea>
+    </div>
+
+    <div class="form-group mt-3">
+      <label for="planning_uploaded_file">Upload Planning Document</label>
+      <input type="file" name="planning_uploaded_file" id="planning_uploaded_file" class="form-control-file">
+      {% if pqp_detail.planning_uploaded_file %}
+        <small class="form-text text-success">
+          Current file: <a href="{{ url_for('static', filename='pqp/uploads/' ~ pqp_detail.planning_uploaded_file) }}" target="_blank">{{ pqp_detail.planning_uploaded_file }}</a>
+        </small>
+      {% endif %}
+    </div>
+
+    <div class="form-check mt-3">
+      <input type="checkbox" name="planning_verified" id="planning_verified" class="form-check-input" value="true"
+        {% if pqp_detail.planning_verified %}checked{% endif %}>
+      <label for="planning_verified" class="form-check-label">Planning documentation verified</label>
+    </div>
+  </div>
+</div>

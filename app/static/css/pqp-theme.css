@@ -1,0 +1,380 @@
+/* QualiPro theme — palette + components
+   Place at: app/static/css/pqp-theme.css
+*/
+
+/* ============ COLORS ============ */
+:root{
+  --qp-teal: #18A999;
+  --qp-teal-700: #12887B;        /* hover dark */
+  --qp-emerald: #4CC59E;
+  --qp-yellow: #F4C542;
+  --qp-orange: #F68B1E;
+
+  --qp-charcoal: #2B2B2B;
+  --qp-mid: #6B6B6B;
+  --qp-bg: #F4F4F4;
+  --qp-white: #FFFFFF;
+
+  --qp-radius: 10px;
+  --qp-shadow: 0 6px 20px rgba(0,0,0,.06);
+  --qp-shadow-soft: 0 2px 10px rgba(0,0,0,.05);
+}
+
+/* ============ BASE ============ */
+.qp-theme, body{
+  background: var(--qp-bg);
+  color: var(--qp-charcoal);
+  font-family: "Roboto", system-ui, -apple-system, Segoe UI, Helvetica, Arial, sans-serif;
+  font-weight: 400;
+}
+
+h1,h2,h3,h4,.navbar-brand,.qp-brand-text{
+  font-family: "Montserrat", system-ui, -apple-system, Segoe UI, Helvetica, Arial, sans-serif;
+}
+
+h1,h2{ font-weight:700; }
+h3,h4{ font-weight:600; }
+
+/* ============ NAVBAR ============ */
+.qp-navbar{
+  background: linear-gradient(90deg, var(--qp-teal) 0%, var(--qp-emerald) 60%, var(--qp-yellow) 100%);
+  box-shadow: var(--qp-shadow-soft);
+}
+.qp-navbar .navbar-brand,
+.qp-navbar .nav-link,
+.qp-navbar .navbar-text{
+  color: var(--qp-white) !important;
+}
+.qp-navbar .nav-link.active{
+  font-weight:600;
+  text-decoration: underline;
+  text-underline-offset: .35rem;
+}
+
+.qp-logo{
+  width: 26px;
+  height: 26px;
+  display: inline-block;
+}
+
+.qp-brand-text{
+  letter-spacing:.2px;
+  font-weight:700;
+  line-height:1;
+}
+
+/* ============ CONTAINERS / CARDS ============ */
+.card, .table-responsive, .qp-panel, .modal-content{
+  background: var(--qp-white);
+  border: 0;
+  border-radius: var(--qp-radius);
+  box-shadow: var(--qp-shadow);
+}
+
+.section-title{
+  color: var(--qp-teal);
+  font-weight:700;
+}
+
+/* ============ BUTTONS ============ */
+.btn.qp-btn-primary,
+.qp-btn-primary{
+  background: var(--qp-teal);
+  border-color: var(--qp-teal);
+  color: var(--qp-white);
+}
+.btn.qp-btn-primary:hover,
+.qp-btn-primary:hover{ background: var(--qp-teal-700); border-color: var(--qp-teal-700); }
+
+.btn.qp-btn-ghost{
+  background: var(--qp-white);
+  color: var(--qp-teal);
+  border: 1px solid var(--qp-teal);
+}
+.btn.qp-btn-ghost:hover{ background: #E9FBF8; }
+
+.btn.qp-btn-cta,
+.qp-btn-cta{
+  background: var(--qp-orange);
+  border-color: var(--qp-orange);
+  color: var(--qp-white);
+  box-shadow: 0 3px 10px rgba(246,139,30,.25);
+}
+.btn.qp-btn-cta:hover{ filter: brightness(.95); }
+
+/* Map Bootstrap primary/success to brand tones (optional but handy) */
+.btn-primary{ background: var(--qp-teal); border-color: var(--qp-teal); }
+.btn-primary:hover{ background: var(--qp-teal-700); border-color: var(--qp-teal-700); }
+.btn-success{ background: var(--qp-emerald); border-color: var(--qp-emerald); }
+
+/* ============ TABLES ============ */
+.table{
+  --bs-table-bg: transparent;
+  --bs-table-striped-bg: #FAFAFA;
+  --bs-table-striped-color: inherit;
+  --bs-table-hover-bg: #F2FCFA; /* very light teal hover */
+  --bs-table-hover-color: inherit;
+  border-radius: var(--qp-radius);
+  overflow: hidden;
+}
+.table thead th{
+  background: var(--qp-charcoal);
+  color: var(--qp-white);
+  font-weight:600;
+}
+.table tbody tr td{ vertical-align: middle; }
+.table tbody tr:hover{ background: var(--bs-table-hover-bg); }
+
+/* ============ TABS (section pills) ============ */
+.nav-tabs .nav-link{
+  border:0;
+  color: var(--qp-teal);
+  font-weight:500;
+}
+.nav-tabs .nav-link.active{
+  border:0;
+  color: var(--qp-charcoal);
+  position: relative;
+}
+.nav-tabs .nav-link.active::after{
+  content:"";
+  position:absolute;
+  left: 10px; right:10px; bottom: -1px;
+  height:3px; border-radius:3px;
+  background: linear-gradient(90deg, var(--qp-teal), var(--qp-yellow), var(--qp-orange));
+}
+
+/* ============ FORMS ============ */
+.form-control, .form-select{
+  border-radius: 8px;
+  border: 1px solid #E3E3E3;
+  background: #fff;
+}
+.form-control:focus, .form-select:focus{
+  border-color: var(--qp-teal);
+  box-shadow: 0 0 0 .2rem rgba(24,169,153,.15);
+}
+
+/* ============ BADGES / STATUS ============ */
+.badge-success{ background: var(--qp-emerald); }
+.badge-warning{ background: var(--qp-yellow); color: #714B00; }
+.badge-danger{ background: #E15C4E; }
+
+/* ============ UTILITIES ============ */
+.qp-pill{
+  display:inline-flex; align-items:center; gap:.4rem;
+  padding:.25rem .6rem; border-radius:999px;
+  background:#E9FBF8; color: var(--qp-teal); font-weight:500;
+}
+.qp-shadow{ box-shadow: var(--qp-shadow) !important; }
+.qp-round{ border-radius: var(--qp-radius) !important; }
+
+
+
+
+
+
+/* ==== QualiPro brand ==== */
+.navbar-brand .brand-symbol {
+  height: 28px;
+  width: auto;
+  filter: drop-shadow(0 1px 0 rgba(0,0,0,.15));
+}
+
+.navbar-brand .brand-wordmark {
+  height: 28px;     /* tidy height for desktop */
+  width: auto;
+  /* makes it pop on the gradient */
+  filter: drop-shadow(0 1px 0 rgba(0,0,0,.18));
+}
+
+/* Give the navbar some breathing room so the wordmark fits nicely */
+.navbar .navbar-brand {
+  padding-top: .35rem;
+  padding-bottom: .35rem;
+}
+
+/* Optional: if md layout still feels tight, hide tagline on md and show on lg+.
+   Only needed if your wordmark image includes a long tagline line. */
+@media (min-width: 768px) and (max-width: 991.98px) {
+  .navbar-brand .brand-wordmark { height: 24px; }
+}
+@media (max-width: 767.98px) {
+  /* ensure we never show both at once on phones */
+  .navbar-brand .brand-wordmark { display: none !important; }
+  .navbar-brand .brand-symbol   { display: inline !important; }
+}
+
+
+
+
+/* ==== QualiPro brand ==== */
+.navbar-brand .brand-symbol {
+  height: 28px;
+  width: auto;
+  filter: drop-shadow(0 1px 0 rgba(0,0,0,.15));
+}
+
+.navbar-brand .brand-wordmark {
+  height: 28px;     /* tidy height for desktop */
+  width: auto;
+  /* makes it pop on the gradient */
+  filter: drop-shadow(0 1px 0 rgba(0,0,0,.18));
+}
+
+/* Give the navbar some breathing room so the wordmark fits nicely */
+.navbar .navbar-brand {
+  padding-top: .35rem;
+  padding-bottom: .35rem;
+}
+
+/* Optional: if md layout still feels tight, hide tagline on md and show on lg+.
+   Only needed if your wordmark image includes a long tagline line. */
+@media (min-width: 768px) and (max-width: 991.98px) {
+  .navbar-brand .brand-wordmark { height: 24px; }
+}
+@media (max-width: 767.98px) {
+  /* ensure we never show both at once on phones */
+  .navbar-brand .brand-wordmark { display: none !important; }
+  .navbar-brand .brand-symbol   { display: inline !important; }
+}
+
+
+/* Logo Sizing in Navbar */
+.navbar-brand .logo-img {
+    max-height: 40px; /* Adjust to 40–50px for nav */
+    height: auto;
+    width: auto;
+}
+
+/* Logo Sizing in Page Headers (e.g., Dashboard top, Forms) */
+.page-header-logo {
+    max-height: 80px; /* Smaller than current huge size */
+    height: auto;
+    width: auto;
+}
+
+/* Ensure on mobile the logo doesn’t dominate */
+@media (max-width: 768px) {
+    .navbar-brand .logo-img {
+        max-height: 32px;
+    }
+    .page-header-logo {
+        max-height: 60px;
+    }
+}
+
+
+
+/* ===== QualiPro logo sizing ===== */
+.navbar-brand .brand-logo {
+  max-height: 0px;   /* nav size */
+  height: auto;
+  width: auto;
+}
+
+.page-header-logo {
+  max-height: 72px;   /* section/page titles */
+  height: auto;
+  width: auto;
+  vertical-align: middle;
+}
+
+/* Mobile tweaks */
+@media (max-width: 768px) {
+  .navbar-brand .brand-logo { max-height: 32px; }
+  .page-header-logo { max-height: 60px; }
+}
+
+/* If a big splash/hero logo exists, keep it modest */
+.brand-hero {
+  display: flex; align-items: center; justify-content: center;
+  padding: 16px 0;
+}
+.brand-hero img { max-height: 120px; height: auto; width: auto; }
+
+
+/* ================================
+   QUALIPRO NAVBAR – FINAL OVERRIDES
+   Paste at the end of pqp-theme.css
+   ================================ */
+
+/* 1) Kill any stray hero/header that sits above the navbar */
+header, .brand-hero, .pqp-hero, .top-ribbon {
+  display: none !important;
+}
+
+/* 2) Undo any previous solid background set on Bootstrap navbars */
+.navbar,
+.navbar-dark,
+.navbar-light,
+.navbar.bg-dark {
+  background: transparent !important;
+  background-color: transparent !important;
+}
+
+/* 3) Put YOUR gradient back (applies when the nav has class 'qualipro-navbar') */
+nav.navbar.qualipro-navbar {
+  /* teal → emerald → yellow → orange */
+  background: linear-gradient(90deg, #18A999, #4CC59E, #F4C542, #F68B1E) !important;
+  padding-block: 0.5rem;
+}
+
+/* 4) Logo sizing & text */
+nav.navbar.qualipro-navbar .navbar-brand img {
+  max-height: 40px;      /* <= adjust if you want smaller/larger */
+  width: auto;
+  height: auto;
+}
+
+nav.navbar.qualipro-navbar .logo-text {
+  color: #fff;
+  line-height: 1.1;
+}
+
+nav.navbar.qualipro-navbar .logo-text strong {
+  font-family: "Montserrat", sans-serif;
+  font-weight: 700;
+  font-size: 1.25rem;
+}
+
+nav.navbar.qualipro-navbar .tagline {
+  font-family: "Montserrat", sans-serif;
+  font-weight: 500;
+  font-size: 0.65rem;
+  letter-spacing: 0.04em;
+  opacity: 0.9;
+}
+
+/* 5) Link colors in the navbar */
+nav.navbar.qualipro-navbar .nav-link {
+  color: #ffffffcc; /* slightly dim */
+}
+
+nav.navbar.qualipro-navbar .nav-link:hover,
+nav.navbar.qualipro-navbar .nav-link.active {
+  color: #fff;
+}
+
+
+
+/* QualiPro brand text (shared) */
+.brand-stack{
+  font-family:"Montserrat",system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;
+  line-height:1;
+}
+.brand-name{ font-weight:700; font-size:1.05rem; letter-spacing:.015em; }
+.brand-tagline{ font-weight:500; font-size:.78rem; opacity:.95; }
+@media (min-width:992px){
+  .brand-name{ font-size:1.15rem; }
+  .brand-tagline{ font-size:.84rem; }
+}
+
+/* Themed table header for PQP tables */
+.qp-table thead th{
+  background: var(--qp-charcoal) !important;  /* #2B2B2B from your palette */
+  color: #fff !important;
+  vertical-align: middle;
+}
+
+

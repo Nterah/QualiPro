@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block title %}Reports | PQP{% endblock %}
+{% block content %}
+<h3 class="mb-3">Reports</h3>
+<div class="card">
+  <div class="card-header">Projects ({{ items|length }})</div>
+  <div class="table-responsive">
+    <table class="table table-striped table-sm mb-0">
+      <thead class="table-light"><tr><th>Code</th><th>Short Description</th><th>Actions</th></tr></thead>
+      <tbody>
+        {% for it in items %}
+          <tr>
+            <td class="fw-semibold">{{ it.code }}</td>
+            <td>{{ it.short }}</td>
+            <td class="d-flex gap-2">
+              <a class="btn btn-sm btn-outline-primary" href="/pqp/summary/{{ it.code }}" target="_blank">Open Summary</a>
+              <a class="btn btn-sm btn-outline-success" href="/pqp/export/{{ it.code }}/csv.zip">Export CSV (.zip)</a>
+              <a class="btn btn-sm btn-outline-dark" href="/pqp/form?project_code={{ it.code }}">Open PQP</a>
+            </td>
+          </tr>
+        {% else %}
+          <tr><td colspan="3" class="text-center text-muted">No projects.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

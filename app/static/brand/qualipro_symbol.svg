@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 600" width="600" height="600">
+  <defs>
+    <linearGradient id="qpGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#18A999"/>
+      <stop offset="50%" stop-color="#F4C542"/>
+      <stop offset="100%" stop-color="#F68B1E"/>
+    </linearGradient>
+    <clipPath id="hexClip">
+      <path d="M300 24 L516 150 Q540 164 540 190 L540 410 Q540 436 516 450 L300 576 Q288 584 276 576 L84 450 Q60 436 60 410 L60 190 Q60 164 84 150 L276 24 Q288 16 300 24 Z"/>
+    </clipPath>
+  </defs>
+  <g clip-path="url(#hexClip)">
+    <rect x="0" y="0" width="600" height="600" fill="url(#qpGrad)"/>
+  </g>
+  <path d="M190 320 L270 400 L430 240" fill="none" stroke="#FFFFFF" stroke-width="64" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

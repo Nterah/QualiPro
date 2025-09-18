@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% block title %}Export | PQP{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h3 class="mb-0">Export Center</h3>
+  <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('pqp.pqp_form_select_by_code') }}">Project Selector</a>
+</div>
+
+<div class="card">
+  <div class="card-header">Projects ({{ items|length }})</div>
+  <div class="table-responsive">
+    <table class="table table-striped table-sm align-middle mb-0">
+      <thead class="table-light">
+        <tr>
+          <th>Code</th>
+          <th>Short Description</th>
+          <th style="width:360px">Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for it in items %}
+          <tr>
+            <td class="fw-semibold">{{ it.code }}</td>
+            <td>{{ it.short }}</td>
+            <td class="d-flex gap-2">
+              <a class="btn btn-sm btn-outline-success"
+                 href="{{ url_for('pqp.pqp_export_zip_csv', code=it.code) }}">
+                Export CSV (.zip)
+              </a>
+              <a class="btn btn-sm btn-outline-primary"
+                 href="{{ url_for('pqp.pqp_summary_html', code=it.code) }}" target="_blank">
+                Open Summary (HTML)
+              </a>
+              <a class="btn btn-sm btn-outline-dark"
+                 href="{{ url_for('pqp.pqp_form_by_code', code=it.code) }}">
+                Open PQP
+              </a>
+            </td>
+          </tr>
+        {% else %}
+          <tr><td colspan="3" class="text-center text-muted">No projects.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+{% block title %}Settings | PQP{% endblock %}
+{% block content %}
+<h3 class="mb-3">Settings</h3>
+
+<div class="row g-3">
+  <div class="col-lg-6">
+    <div class="card">
+      <div class="card-header fw-bold">Mail & Reminders</div>
+      <div class="card-body">
+        <form>
+          <div class="mb-2">
+            <label class="form-label">SMTP Host</label>
+            <input class="form-control" placeholder="smtp.example.com">
+          </div>
+          <div class="row g-2">
+            <div class="col-6">
+              <label class="form-label">SMTP User</label>
+              <input class="form-control" placeholder="username">
+            </div>
+            <div class="col-6">
+              <label class="form-label">SMTP Password</label>
+              <input class="form-control" type="password" placeholder="password">
+            </div>
+          </div>
+          <div class="mb-2">
+            <label class="form-label">Default Reminder Cadence</label>
+            <select class="form-select">
+              <option>Weekly</option>
+              <option>Fortnightly</option>
+              <option>Monthly</option>
+            </select>
+          </div>
+          <button type="button" class="btn btn-primary">Save (stub)</button>
+        </form>
+      </div>
+    </div>
+  </div>
+  <div class="col-lg-6">
+    <div class="card">
+      <div class="card-header fw-bold">Export Defaults</div>
+      <div class="card-body">
+        <form>
+          <div class="mb-2">
+            <label class="form-label">CSV Encoding</label>
+            <select class="form-select">
+              <option selected>UTF-8</option>
+              <option>Windows-1252</option>
+            </select>
+          </div>
+          <div class="mb-2">
+            <label class="form-label">Date Format</label>
+            <input class="form-control" placeholder="yyyy-mm-dd">
+          </div>
+          <button type="button" class="btn btn-primary">Save (stub)</button>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

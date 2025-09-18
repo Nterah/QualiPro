@@ -1,0 +1,26 @@
+{# app/pqp/templates/pqp_form_sections/02_project_team.html #}
+<div class="card mb-4">
+  <div class="card-header bg-primary text-white">
+    <strong>Section 2: Project Team</strong>
+  </div>
+  <div class="card-body">
+
+    <div class="form-group mb-3">
+      <label for="team_description">Team Structure and Roles</label>
+      <textarea class="form-control" id="team_description" name="team_description" rows="4" placeholder="Provide an overview of the project team structure, internal and external roles, responsibilities, and interrelationships." required>{{ pqp_detail.team_description or '' }}</textarea>
+    </div>
+
+    <div class="form-group mb-3">
+      <label for="team_checklist_complete">Checklist Completion</label>
+      <select class="form-control" id="team_checklist_complete" name="team_checklist_complete" required>
+        <option value="">-- Select Status --</option>
+        <option value="true" {{ 'selected' if pqp_detail.team_checklist_complete == True else '' }}>Checklist Complete</option>
+        <option value="false" {{ 'selected' if pqp_detail.team_checklist_complete == False else '' }}>Checklist Incomplete</option>
+      </select>
+    </div>
+
+    <hr />
+    <p class="text-muted"><strong>Note:</strong> This section is auto-linked to the team table. Please ensure all members are added under the Team tab. This field serves only for narrative and summary purposes.</p>
+  </div>
+</div>
+ed
