@@ -6,7 +6,7 @@ from dotenv import load_dotenv
 
 from .extensions import db, migrate  # shared instances
 
-load_dotenv()
+load_dotenv(override=True)
 
 def create_app():
     app = Flask(__name__)

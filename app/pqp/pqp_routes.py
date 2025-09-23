@@ -15,6 +15,9 @@ from contextlib import contextmanager
 from sqlalchemy import text
 from app.extensions import db
 
+#from .sections import SECTIONS  # <-- add this
+
+
 @contextmanager
 def get_db_connection():
     """
@@ -2385,16 +2388,15 @@ def pqp_form_by_code(code):
         "pqp_form.html",
         code=code,
         project=project,
-        sections=section_titles,        # was SECTIONS (undefined)
-        section_columns=section_columns,    # was section_cols
-        section_data=section_data,          # was section_rows
+        sections=DEFAULT_SECTION_TITLES,            # your tab list
+        section_columns=section_columns,
+        section_data=section_data,
         p_cols=group_cols,
         p_rows=group_data,
-        p_meta=group_meta,                  # was p_meta (undefined)
-        read_only=True,
-        read_only=False,           # show Add/Edit/Delete (set True to lock)
-        show_debug_tables=False,   # hides “pqp.sectionXX” name badges
+        p_meta=group_meta,            # make sure this name matches the dict you build above
+        read_only=False               # only once
     )
+
 
 
 
