@@ -1,69 +1,10 @@
-{# app/pqp/templates/pqp_form_sections/10_risk_register.html #}
-<div class="card mb-4">
-  <div class="card-header bg-danger text-white">
-    <h5 class="mb-0">Section 10: Risk Register</h5>
-  </div>
-  <div class="card-body">
-    <table class="table table-bordered" id="riskTable">
-      <thead class="thead-light">
-        <tr>
-          <th style="width: 5%">#</th>
-          <th style="width: 25%">Risk Description</th>
-          <th style="width: 10%">Rating</th>
-          <th style="width: 30%">Mitigation Measures</th>
-          <th style="width: 15%">Responsible</th>
-          <th style="width: 15%">Status</th>
-        </tr>
-      </thead>
-      <tbody id="riskTableBody">
-        {% for idx, risk in enumerate(pqp_detail.risks or []) %}
-        <tr>
-          <td>{{ idx + 1 }}</td>
-          <td><input type="text" name="risk_description_{{ idx }}" class="form-control" value="{{ risk.description }}"></td>
-          <td><input type="text" name="risk_rating_{{ idx }}" class="form-control" value="{{ risk.rating }}"></td>
-          <td><input type="text" name="risk_mitigation_{{ idx }}" class="form-control" value="{{ risk.mitigation }}"></td>
-          <td><input type="text" name="risk_responsible_{{ idx }}" class="form-control" value="{{ risk.responsible }}"></td>
-          <td>
-            <select name="risk_status_{{ idx }}" class="form-control">
-              <option value="">--</option>
-              <option value="Open" {{ 'selected' if risk.status == 'Open' else '' }}>Open</option>
-              <option value="Closed" {{ 'selected' if risk.status == 'Closed' else '' }}>Closed</option>
-              <option value="Ongoing" {{ 'selected' if risk.status == 'Ongoing' else '' }}>Ongoing</option>
-            </select>
-          </td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
+{# Section 10: Risk Register (single table: 101) #}
+<section id="sec10" class="mb-3">
+  <h5 class="mb-2">10. Risk Register</h5>
 
-    <button type="button" class="btn btn-outline-primary mt-2" onclick="addRiskRow()">Add Risk</button>
-  </div>
-</div>
-
-<script>
-    let riskIndex = Number("{{ pqp_detail.risks|length if pqp_detail.risks else 0 }}");
-
-  function addRiskRow() {
-    const tbody = document.getElementById("riskTableBody");
-    const row = document.createElement("tr");
-
-    row.innerHTML = `
-      <td>${riskIndex + 1}</td>
-      <td><input type="text" name="risk_description_${riskIndex}" class="form-control"></td>
-      <td><input type="text" name="risk_rating_${riskIndex}" class="form-control"></td>
-      <td><input type="text" name="risk_mitigation_${riskIndex}" class="form-control"></td>
-      <td><input type="text" name="risk_responsible_${riskIndex}" class="form-control"></td>
-      <td>
-        <select name="risk_status_${riskIndex}" class="form-control">
-          <option value="">--</option>
-          <option value="Open">Open</option>
-          <option value="Closed">Closed</option>
-          <option value="Ongoing">Ongoing</option>
-        </select>
-      </td>
-    `;
-
-    tbody.appendChild(row);
-    riskIndex++;
-  }
-</script>
+  {% set _sub = 101 %}
+  {% set _cols = p_cols.get(_sub) or [] %}
+  {% set _rows = p_rows.get(_sub) or [] %}
+  {% set _meta = p_meta.get(_sub) or {'title':'10.1 Risk Register', 'sub_no':_sub} %}
+  {% include "pqp_form_sections/_simple_table.html" %}
+</section>

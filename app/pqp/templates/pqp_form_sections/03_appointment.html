@@ -1,32 +1,21 @@
-{# app/pqp/templates/pqp_form_sections/03_appointment.html #}
-<div class="card mb-4">
-  <div class="card-header bg-info text-white">
-    <h5 class="mb-0">Section 3: Appointment & Milestones</h5>
-  </div>
-  <div class="card-body">
-    <div class="form-group">
-      <label for="appointment_milestones">Key Milestones</label>
-      <textarea name="appointment_milestones" id="appointment_milestones" class="form-control" rows="4" required>{{ pqp_detail.appointment_milestones or '' }}</textarea>
-    </div>
+<section id="sec3" class="mb-3">
+  <h5 class="mb-2">3. Appointment & Milestones</h5>
 
-    <div class="form-group mt-3">
-      <label for="appointment_status">Appointment Status</label>
-      <select name="appointment_status" id="appointment_status" class="form-control" required>
-        <option value="">-- Select Status --</option>
-        <option value="Drafted" {{ 'selected' if pqp_detail.appointment_status == 'Drafted' else '' }}>Drafted</option>
-        <option value="Approved" {{ 'selected' if pqp_detail.appointment_status == 'Approved' else '' }}>Approved</option>
-        <option value="Finalised" {{ 'selected' if pqp_detail.appointment_status == 'Finalised' else '' }}>Finalised</option>
-      </select>
-    </div>
+  {% set _sub = 31 %}
+  {% set _cols = p_cols.get(_sub) or [] %}
+  {% set _rows = p_rows.get(_sub) or [] %}
+  {% set _meta = (p_meta.get(_sub) or {}).update({'title':'3.1 Appointment — Records/Storage', 'sub_no':_sub}) or p_meta.get(_sub) or {'title':'3.1 Appointment — Records/Storage', 'sub_no':_sub} %}
+  {% include "pqp_form_sections/_simple_table.html" %}
 
-    <div class="form-group mt-3">
-      <label for="appointment_uploaded_file">Upload Appointment Document</label>
-      <input type="file" name="appointment_uploaded_file" id="appointment_uploaded_file" class="form-control-file">
-      {% if pqp_detail.appointment_uploaded_file %}
-        <small class="form-text text-success">
-          Current file: <a href="{{ url_for('static', filename='pqp/uploads/' ~ pqp_detail.appointment_uploaded_file) }}" target="_blank">{{ pqp_detail.appointment_uploaded_file }}</a>
-        </small>
-      {% endif %}
-    </div>
-  </div>
-</div>
+  {% set _sub = 32 %}
+  {% set _cols = p_cols.get(_sub) or [] %}
+  {% set _rows = p_rows.get(_sub) or [] %}
+  {% set _meta = (p_meta.get(_sub) or {}).update({'title':'3.2 Appointment — Review', 'sub_no':_sub}) or p_meta.get(_sub) or {'title':'3.2 Appointment — Review', 'sub_no':_sub} %}
+  {% include "pqp_form_sections/_simple_table.html" %}
+
+  {% set _sub = 33 %}
+  {% set _cols = p_cols.get(_sub) or [] %}
+  {% set _rows = p_rows.get(_sub) or [] %}
+  {% set _meta = (p_meta.get(_sub) or {}).update({'title':'3.3 Appointment — Deliverables', 'sub_no':_sub}) or p_meta.get(_sub) or {'title':'3.3 Appointment — Deliverables', 'sub_no':_sub} %}
+  {% include "pqp_form_sections/_simple_table.html" %}
+</section>

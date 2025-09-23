@@ -1,20 +1,15 @@
-{# app/pqp/templates/pqp_form_sections/07_additional_services.html #}
-<div class="card mb-4">
-  <div class="card-header bg-secondary text-white">
-    <h5 class="mb-0">Section 7: Additional Services</h5>
-  </div>
-  <div class="card-body">
-    <div class="form-group">
-      <label for="extras_description">Description of Additional Services</label>
-      <textarea name="extras_description" id="extras_description" class="form-control" rows="4">{{ pqp_detail.extras_description or '' }}</textarea>
-    </div>
+<section id="sec7" class="mb-3">
+  <h5 class="mb-2">7. Additional Services</h5>
 
-    <div class="form-check mt-3">
-      <input class="form-check-input" type="checkbox" value="true" name="extras_approved" id="extras_approved" {% if pqp_detail.extras_approved %}checked{% endif %}>
-      <label class="form-check-label" for="extras_approved">
-        Additional Services Approved
-      </label>
-    </div>
-  </div>
-</div>
+  {% set _sub = 71 %}
+  {% set _cols = p_cols.get(_sub) or [] %}
+  {% set _rows = p_rows.get(_sub) or [] %}
+  {% set _meta = (p_meta.get(_sub) or {}).update({'title':'7.1 Additional Services — Items', 'sub_no':_sub}) or p_meta.get(_sub) or {'title':'7.1 Additional Services — Items', 'sub_no':_sub} %}
+  {% include "pqp_form_sections/_simple_table.html" %}
 
+  {% set _sub = 72 %}
+  {% set _cols = p_cols.get(_sub) or [] %}
+  {% set _rows = p_rows.get(_sub) or [] %}
+  {% set _meta = (p_meta.get(_sub) or {}).update({'title':'7.2 Additional Services — Actions/Notes', 'sub_no':_sub}) or p_meta.get(_sub) or {'title':'7.2 Additional Services — Actions/Notes', 'sub_no':_sub} %}
+  {% include "pqp_form_sections/_simple_table.html" %}
+</section>

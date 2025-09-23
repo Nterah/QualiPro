@@ -1,30 +1,21 @@
-{# app/pqp/templates/pqp_form_sections/06_works_handover.html #}
-<div class="card mb-4">
-  <div class="card-header bg-secondary text-white">
-    <h5 class="mb-0">Section 6: Works & Handover</h5>
-  </div>
-  <div class="card-body">
-    <div class="form-group">
-      <label for="works_plan">Works Plan / Execution Approach</label>
-      <textarea name="works_plan" id="works_plan" class="form-control" rows="4">{{ pqp_detail.works_plan or '' }}</textarea>
-    </div>
+<section id="sec6" class="mb-3">
+  <h5 class="mb-2">6. Works / Handover</h5>
 
-    <div class="form-group mt-3">
-      <label for="works_checklist_complete">Checklist Complete?</label>
-      <div class="form-check">
-        <input class="form-check-input" type="checkbox" name="works_checklist_complete" id="works_checklist_complete" value="1" {% if pqp_detail.works_checklist_complete %}checked{% endif %}>
-        <label class="form-check-label" for="works_checklist_complete">Yes, all items are checked</label>
-      </div>
-    </div>
+  {% set _sub = 61 %}
+  {% set _cols = p_cols.get(_sub) or [] %}
+  {% set _rows = p_rows.get(_sub) or [] %}
+  {% set _meta = (p_meta.get(_sub) or {}).update({'title':'6.1 Contracts / Orders', 'sub_no':_sub}) or p_meta.get(_sub) or {'title':'6.1 Contracts / Orders', 'sub_no':_sub} %}
+  {% include "pqp_form_sections/_simple_table.html" %}
 
-    <div class="form-group mt-3">
-      <label for="works_progress_photo">Upload Works Progress Photo</label>
-      <input type="file" name="works_progress_photo" id="works_progress_photo" class="form-control-file">
-      {% if pqp_detail.works_progress_photo %}
-        <small class="form-text text-success">
-          Current photo: <a href="{{ url_for('static', filename='pqp/uploads/' ~ pqp_detail.works_progress_photo) }}" target="_blank">{{ pqp_detail.works_progress_photo }}</a>
-        </small>
-      {% endif %}
-    </div>
-  </div>
-</div>
+  {% set _sub = 62 %}
+  {% set _cols = p_cols.get(_sub) or [] %}
+  {% set _rows = p_rows.get(_sub) or [] %}
+  {% set _meta = (p_meta.get(_sub) or {}).update({'title':'6.2 Payments / Certificates / Dates', 'sub_no':_sub}) or p_meta.get(_sub) or {'title':'6.2 Payments / Certificates / Dates', 'sub_no':_sub} %}
+  {% include "pqp_form_sections/_simple_table.html" %}
+
+  {% set _sub = 63 %}
+  {% set _cols = p_cols.get(_sub) or [] %}
+  {% set _rows = p_rows.get(_sub) or [] %}
+  {% set _meta = (p_meta.get(_sub) or {}).update({'title':'6.3 Instructions / Handover / Final', 'sub_no':_sub}) or p_meta.get(_sub) or {'title':'6.3 Instructions / Handover / Final', 'sub_no':_sub} %}
+  {% include "pqp_form_sections/_simple_table.html" %}
+</section>

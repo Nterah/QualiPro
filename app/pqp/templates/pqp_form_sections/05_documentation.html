@@ -1,32 +1,15 @@
-{# app/pqp/templates/pqp_form_sections/05_documentation.html #}
-<div class="card mb-4">
-  <div class="card-header bg-warning text-white">
-    <h5 class="mb-0">Section 5: Documentation & Tender</h5>
-  </div>
-  <div class="card-body">
-    <div class="form-group">
-      <label for="tender_instructions">Tender Instructions</label>
-      <textarea name="tender_instructions" id="tender_instructions" class="form-control" rows="4" required>{{ pqp_detail.tender_instructions or '' }}</textarea>
-    </div>
+<section id="sec5" class="mb-3">
+  <h5 class="mb-2">5. Documentation & Tender</h5>
 
-    <div class="form-group mt-3">
-      <label for="tender_status">Tender Status</label>
-      <select name="tender_status" id="tender_status" class="form-control" required>
-        <option value="">-- Select Status --</option>
-        <option value="Not Started" {{ 'selected' if pqp_detail.tender_status == 'Not Started' else '' }}>Not Started</option>
-        <option value="In Progress" {{ 'selected' if pqp_detail.tender_status == 'In Progress' else '' }}>In Progress</option>
-        <option value="Completed" {{ 'selected' if pqp_detail.tender_status == 'Completed' else '' }}>Completed</option>
-      </select>
-    </div>
+  {% set _sub = 51 %}
+  {% set _cols = p_cols.get(_sub) or [] %}
+  {% set _rows = p_rows.get(_sub) or [] %}
+  {% set _meta = (p_meta.get(_sub) or {}).update({'title':'5.1 Documentation — Requirements', 'sub_no':_sub}) or p_meta.get(_sub) or {'title':'5.1 Documentation — Requirements', 'sub_no':_sub} %}
+  {% include "pqp_form_sections/_simple_table.html" %}
 
-    <div class="form-group mt-3">
-      <label for="tender_uploaded_file">Upload Tender Document</label>
-      <input type="file" name="tender_uploaded_file" id="tender_uploaded_file" class="form-control-file">
-      {% if pqp_detail.tender_uploaded_file %}
-        <small class="form-text text-success">
-          Current file: <a href="{{ url_for('static', filename='pqp/uploads/' ~ pqp_detail.tender_uploaded_file) }}" target="_blank">{{ pqp_detail.tender_uploaded_file }}</a>
-        </small>
-      {% endif %}
-    </div>
-  </div>
-</div>
+  {% set _sub = 52 %}
+  {% set _cols = p_cols.get(_sub) or [] %}
+  {% set _rows = p_rows.get(_sub) or [] %}
+  {% set _meta = (p_meta.get(_sub) or {}).update({'title':'5.2 Tender — Notes/Risks', 'sub_no':_sub}) or p_meta.get(_sub) or {'title':'5.2 Tender — Notes/Risks', 'sub_no':_sub} %}
+  {% include "pqp_form_sections/_simple_table.html" %}
+</section>

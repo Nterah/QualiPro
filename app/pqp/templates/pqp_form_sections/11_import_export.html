@@ -1,0 +1,73 @@
+<section id="sec10">
+  <div class="card">
+    <div class="card-body">
+      <form id="csv-import"
+            method="post"
+            enctype="multipart/form-data"
+            class="row g-2 align-items-end"
+            action="{{ url_for('pqp.pqp_section_import', code=code, section_idx=0) }}"
+            data-base="{{ url_for('pqp.pqp_section_import', code=code, section_idx=0) }}">
+        <div class="col-auto">
+          <label for="section_idx" class="form-label mb-0">Section</label>
+          <select id="section_idx" name="section_idx" class="form-select form-select-sm">
+            {# form sections are 1..9 but the import endpoints take 0..8 index #}
+            {% for i in range(0, 9) %}
+              <option value="{{ i }}">{{ i + 1 }}</option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <div class="col-auto">
+          <label for="csvFile" class="form-label mb-0">CSV</label>
+          <input id="csvFile" name="file" type="file" accept=".csv" class="form-control form-control-sm">
+        </div>
+
+        <div class="col-auto">
+          <button class="btn btn-sm btn-primary" type="submit">Import CSV</button>
+        </div>
+
+        <div class="col-auto ms-auto">
+          <a id="tmpl-link"
+             class="btn btn-sm btn-outline-secondary"
+             href="{{ url_for('pqp.pqp_template_csv', section_idx=0) }}"
+             data-base="{{ url_for('pqp.pqp_template_csv', section_idx=0) }}">
+            Download CSV Template
+          </a>
+        </div>
+      </form>
+    </div>
+  </div>
+</section>
+
+<script>
+(function () {
+  // keep the template link and form action in sync with the selected section
+  var sel  = document.getElementById('section_idx');
+  var link = document.getElementById('tmpl-link');
+  var form = document.getElementById('csv-import');
+
+  if (!sel || !link || !form) return;
+
+  var baseTmpl = link.getAttribute('data-base');  // e.g. /pqp/template/csv/0
+  var baseForm = form.getAttribute('data-base');  // e.g. /pqp/pqp/<code>/section/0/import
+
+  function replaceTrailingNumber(u, v) {
+    // replaces the final /<number> path segment (works for both URLs above)
+    return u.replace(/\/\d+(?=$|[/?#])/,'/' + v);
+  }
+
+  function updateLinks() {
+    var v = parseInt(sel.value, 10) || 0;
+    link.setAttribute('href', replaceTrailingNumber(baseTmpl, v));
+    form.setAttribute('action', replaceTrailingNumber(baseForm, v));
+  }
+
+  sel.addEventListener('change', updateLinks);
+  updateLinks();
+
+  // make sure the action reflects the latest selection right before submit
+  form.addEventListener('submit', function () {
+    updateLinks();
+  });
+})();
+</script>

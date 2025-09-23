@@ -7,6 +7,30 @@ import time
 import zipfile
 from datetime import date, datetime
 
+import psycopg2.extras
+from flask import jsonify
+
+# DB connection helper
+from contextlib import contextmanager
+from sqlalchemy import text
+from app.extensions import db
+
+@contextmanager
+def get_db_connection():
+    """
+    Yields a SQLAlchemy Connection. We also defensively set the schema,
+    in case the global event hook didn't run.
+    """
+    with db.engine.connect() as conn:
+        try:
+            conn.execute(text("SET search_path TO pqp, public"))
+        except Exception:
+            # harmless if it fails, the app-level event usually handles this
+            pass
+        yield conn
+
+
+
 def as_bool(val):
     """Convert form values like 'on', 'true', '1' to boolean True, else False."""
     return str(val).lower() in ("1", "true", "on", "yes")
@@ -21,6 +45,12 @@ from app.pqp.ingest.ai_import import parse_workbook_to_payload, commit_payload
 
 # String/date helpers
 from datetime import date, datetime
+
+def _norm_code(s: str) -> str:
+    # normalizes "291RT+P232" → "291RT P232", trims stray spaces
+    return (s or "").replace("+", " ").strip()
+
+
 
 def _as_str(x):
     """Return a clean string for templates: supports None, date, datetime, text, numbers."""
@@ -65,46 +95,312 @@ from sqlalchemy import text  # needed by the API queries
 
 
 
+# --- Harden section lookup: map codes -> table(s)
+SECTION_META = {
+    "section101":   {"tables": ["pqp.section101"], "title": "Section 101"},
+    "risk_concept": {"tables": ["pqp.risk_concept"], "title": "Concept & Design Development"},
+    "risk_docs":    {"tables": ["pqp.risk_docs"],    "title": "Documentation & Tender"},
+    "risk_works":   {"tables": ["pqp.risk_works"],   "title": "Implementation / Works"},
+    # Example for multi-table sections later:
+    # "section3": {"tables": ["pqp.section3_header", "pqp.section3_items"], "title": "Appointment & Milestones"}
+}
 
-# --- Section → table/columns mapping (snake_case; matches pqp.sectionX views) ---
+def _columns_for_table(engine, table_qualified: str):
+    """Return column list using information_schema (ordered)."""
+    schema, table = table_qualified.split('.', 1)
+    sql = """
+    select column_name
+    from information_schema.columns
+    where table_schema = :s and table_name = :t
+    order by ordinal_position
+    """
+    from sqlalchemy import text
+    with engine.connect() as c:
+        return [r[0] for r in c.execute(text(sql), {"s": schema, "t": table})]
+
+
+
+
+
+# --- Section → DB table mapping (aligned with Supabase current schema) ---
+# NOTE: Section 3 is composite (31/32/33) and is handled by _load_section3_from_parts.
+#       Section 9 (Scope Register) may be composite (91/92); we keep it special-friendly.
 SECTION_TABLE = {
     1: "pqp.section1",
     2: "pqp.section2",
-    3: "pqp.section31",   # In-place / filing items
-    4: "pqp.section41",   # Planning & Design notes
-    5: "pqp.section51",   # Documentation & Procurement
-    6: "pqp.section61",   # Works & Handover
-    7: "pqp.section71",   # Additional services
-    8: "pqp.section8",    # Close-out & feedback
+    3: None,              # composite, handled separately
+    4: "pqp.section4",
+    5: "pqp.section5",
+    6: "pqp.section6",
+    7: "pqp.section7",
+    8: "pqp.section8",
+    9: "pqp.section9",    # if yours is split 91/92, leave this as None and load via its own helper
+    10: None,             # keep spare; your UI shows up to 10 panels
 }
 
+# --- UI column labels per panel (kept exactly as your templates expect) ---
 SECTION_COLS = {
-    1: ["project_code","project_description","project_location",
-        "client_organisation","primary_contact_name","vat_number",
-        "contact_person_designation","invoice_address"],
-    2: ["project_code","role","reqd","organisation_responsible",
-        "representative_name","email","cell",
-        "subconsultant_to_hn","subconsultant_agreement","cpg_partner",
-        "cpg_percent","comments"],
-    3: ["project_code","item","in_place","date_val","filing_location","notes"],
-    4: ["project_code","design_criteria_requirements","planning_design_risks",
-        "scope_register_location","design_notes"],
-    5: ["project_code","client_tender_doc_requirements","form_of_contract",
-        "standard_specs","client_template_date","documentation_risks",
-        "tender_phase_notes"],
-    6: ["project_code","construction_description","contractor_organisation",
-        "contract_number","award_value_incl_vat","award_date","original_order_no",
-        "original_date_order","inception_meeting_date","final_payment_cert_date",
-        "final_value_incl_vat","commencement_of_works","date_of_ea_instruction",
-        "where_instruction_recorded","completion_date","final_approval_date",
-        "client_takeover_date","commencement_instruction_date",
-        "commencement_instruction_location","construction_phase_risks",
-        "construction_phase_notes"],
-    7: ["project_code","additional_services_done","notes"],
-    8: ["project_code","date_csq_submitted","date_csq_received","csq_rating",
-        "location","comments_on_feedback","actual_close_out_date",
-        "general_remarks_lessons_learned"],
+    1: ["id","Project Description","Location","Client Organisation","Primary Contact Name",
+        "VAT Number","Designation","Invoice Address"],
+    2: ["id","Role","Req'd","Organisation","Representative Name","Email","Cell",
+        "Subconsultant to HN?","Subconsultant Agreement?","CPG Partner?","CPG %","Comments"],
+    3: ["id","In Place","Date","Filing Location","Notes",
+        "Appointment Date","Expected Duration","Contract/Ref No","Comments"],
+    4: ["id","Design Criteria/Requirements","Planning & Design Risks",
+        "Scope Register Location","Design Notes"],
+    5: ["id","Client Tender Doc Requirements","Form of Contract","Standard Specs",
+        "Client Template Date","Documentation Risks","Tender Phase Notes"],
+    6: ["id","Construction Description","Contractor Organisation","Contract Number",
+        "Award Value (incl VAT)","Award Date","Original Order No","Original Date of Order",
+        "Inception Meeting Date","Final Payment Cert Date","Final Value (incl VAT)",
+        "Commencement of Works","Date of EA's Instruction","Where Instruction Recorded",
+        "Completion Date","Final Approval Date","Client Takeover Date",
+        "Commencement Instruction Date","Commencement Instruction Location",
+        "Construction Phase Risks","Construction Phase Notes"],
+    7: ["id","Additional Services Done","Project-specific Risks",
+        "Mitigating Measures","Record of Action Taken","Notes"],
+    8: ["id","Date CSQ Submitted","Date CSQ Received","CSQ Rating","Location",
+        "Comments on Feedback","Actual Close-Out Date","General Remarks/Lessons Learned"],
+    9: ["id","Scope Item","Category","Owner","Status","Due Date","Notes"],
+    10: ["id"],  # reserved; template will tolerate empty rows
 }
+
+# --- DB→UI column name mapping per section (non-destructive; best effort) ---
+# Left side: actual DB column names; right side: your UI label names in SECTION_COLS.
+# If a column is missing, it is silently ignored.
+DB_TO_UI_COLS = {
+    1: {
+        "project_code": "id",
+        "project_description": "Project Description",
+        "location": "Location",
+        "client_organisation": "Client Organisation",
+        "primary_contact_name": "Primary Contact Name",
+        "vat_number": "VAT Number",
+        "designation": "Designation",
+        "invoice_address": "Invoice Address",
+    },
+    2: {
+        "project_code": "id",
+        "role": "Role",
+        "required": "Req'd",
+        "organisation": "Organisation",
+        "representative_name": "Representative Name",
+        "email": "Email",
+        "cell": "Cell",
+        "is_subconsultant": "Subconsultant to HN?",
+        "has_subconsultant_agreement": "Subconsultant Agreement?",
+        "is_cpg_partner": "CPG Partner?",
+        "cpg_percent": "CPG %",
+        "comments": "Comments",
+    },
+    4: {
+        "project_code": "id",
+        "design_criteria": "Design Criteria/Requirements",
+        "planning_design_risks": "Planning & Design Risks",
+        "scope_register_location": "Scope Register Location",
+        "design_notes": "Design Notes",
+    },
+    5: {
+        "project_code": "id",
+        "client_tender_requirements": "Client Tender Doc Requirements",
+        "form_of_contract": "Form of Contract",
+        "standard_specs": "Standard Specs",
+        "client_template_date": "Client Template Date",
+        "documentation_risks": "Documentation Risks",
+        "tender_phase_notes": "Tender Phase Notes",
+    },
+    6: {
+        "project_code": "id",
+        "construction_description": "Construction Description",
+        "contractor_organisation": "Contractor Organisation",
+        "contract_number": "Contract Number",
+        "award_value_incl_vat": "Award Value (incl VAT)",
+        "award_date": "Award Date",
+        "original_order_no": "Original Order No",
+        "original_order_date": "Original Date of Order",
+        "inception_meeting_date": "Inception Meeting Date",
+        "final_payment_cert_date": "Final Payment Cert Date",
+        "final_value_incl_vat": "Final Value (incl VAT)",
+        "commencement_of_works": "Commencement of Works",
+        "ea_instruction_date": "Date of EA's Instruction",
+        "ea_instruction_location": "Where Instruction Recorded",
+        "completion_date": "Completion Date",
+        "final_approval_date": "Final Approval Date",
+        "client_takeover_date": "Client Takeover Date",
+        "commencement_instruction_date": "Commencement Instruction Date",
+        "commencement_instruction_location": "Commencement Instruction Location",
+        "construction_phase_risks": "Construction Phase Risks",
+        "construction_phase_notes": "Construction Phase Notes",
+    },
+    7: {
+        "project_code": "id",
+        "additional_services_done": "Additional Services Done",
+        "project_specific_risks": "Project-specific Risks",
+        "mitigating_measures": "Mitigating Measures",
+        "record_of_action": "Record of Action Taken",
+        "notes": "Notes",
+    },
+    8: {
+        "project_code": "id",
+        "date_csq_submitted": "Date CSQ Submitted",
+        "date_csq_received": "Date CSQ Received",
+        "csq_rating": "CSQ Rating",
+        "location": "Location",
+        "feedback_comments": "Comments on Feedback",
+        "actual_close_out_date": "Actual Close-Out Date",
+        "general_remarks": "General Remarks/Lessons Learned",
+    },
+    9: {
+        "project_code": "id",
+        "scope_item": "Scope Item",
+        "category": "Category",
+        "owner": "Owner",
+        "status": "Status",
+        "due_date": "Due Date",
+        "notes": "Notes",
+    },
+}
+
+# === BEGIN ADD: multi-table section metadata ===============================
+
+# For sections that are composed of multiple physical tables (e.g., 3 = 31/32/33,
+# 4 = 41/42, etc). The UI will use these to render sub-panels, and the loader
+# will know which underlying tables to read from.
+SECTION_PART_TABLES = {
+    3:  {
+        "31": ("Appointment — Records/Storage",   "pqp.section31"),
+        "32": ("Appointment — Review",            "pqp.section32"),
+        "33": ("Appointment — Deliverables",      "pqp.section33"),
+    },
+    4:  {
+        "41": ("Planning & Design — Criteria",    "pqp.section41"),
+        "42": ("Planning & Design — Approvals",   "pqp.section42"),
+    },
+    5:  {
+        "51": ("Documentation — Requirements",    "pqp.section51"),
+        "52": ("Tender — Notes/Risks",            "pqp.section52"),
+    },
+    6:  {
+        "61": ("Works — Contract/Award",          "pqp.section61"),
+        "62": ("Works — Dates/Instructions",      "pqp.section62"),
+        "63": ("Works — Completion/Final",        "pqp.section63"),
+    },
+    7:  {
+        "71": ("Additional Services — Items",     "pqp.section71"),
+        "72": ("Additional Services — Actions",   "pqp.section72"),
+    },
+    9:  {
+        "91": ("Scope Register — Items",          "pqp.section91"),
+        "92": ("Scope Register — Tasks",          "pqp.section92"),
+    },
+    10: {
+        "101": ("Risk Register",                  "pqp.section101"),
+    },
+}
+
+# Optional: if you already know a part’s column order, declare it here so the UI
+# can label columns consistently. When not provided, we’ll derive from the table
+# itself (information_schema) and still display.
+SECTION_PART_COLS = {
+    # Section 3 already has a dedicated loader; you can leave it empty here or
+    # duplicate it for consistency. Example:
+    3: {
+        "31": ["id", "item", "in_place", "date_val", "filing_location", "notes"],
+        "32": ["id", "appointment_review_date", "appointment_reviewer", "review_comments",
+               "appointment_roles", "appointment_date", "expected_duration",
+               "original_end_date", "contract_ref_no", "general_comments"],
+        "33": ["id", "ecsa_project_stage", "date_completed", "description_of_deliverable",
+               "deliverable", "deliverable_accepted", "employer_approved", "comments"],
+    },
+    # Section 10 (Risk Register) — from your screenshot/notes
+    10: {
+        "101": [
+            "heading_id","id","risk_code","title","description","cause","consequence",
+            "category","likelihood","impact","treatment","owner","due_date","status",
+            "extra","date_created","date_modified","row_id"
+        ],
+    },
+}
+
+# === END ADD: multi-table section metadata =================================
+
+
+
+
+# --- MULTI-TABLE SECTIONS (add once) ---------------------------------------
+from collections import OrderedDict
+
+SUBSECTIONS = {
+    3: OrderedDict([
+        ("31", {"title": "3.1 Appointment",                  "table": "pqp.section31"}),
+        ("32", {"title": "3.2 Milestones",                   "table": "pqp.section32"}),
+        ("33", {"title": "3.3 Deliverables / Approvals",     "table": "pqp.section33"}),
+    ]),
+    4: OrderedDict([
+        ("41", {"title": "4.1 Planning & Design",            "table": "pqp.section41"}),
+        ("42", {"title": "4.2 Project-specific Risks",       "table": "pqp.section42"}),
+    ]),
+    5: OrderedDict([
+        ("51", {"title": "5.1 Documentation",                "table": "pqp.section51"}),
+        ("52", {"title": "5.2 Tender",                       "table": "pqp.section52"}),
+    ]),
+    6: OrderedDict([
+        ("61", {"title": "6.1 Contracts / Orders",           "table": "pqp.section61"}),
+        ("62", {"title": "6.2 Payments / Certificates",      "table": "pqp.section62"}),
+        ("63", {"title": "6.3 Instructions / Handover",      "table": "pqp.section63"}),
+    ]),
+    7: OrderedDict([
+        ("71", {"title": "7.1 Additional Services",          "table": "pqp.section71"}),
+        ("72", {"title": "7.2 Actions & Notes",              "table": "pqp.section72"}),
+    ]),
+    9: OrderedDict([
+        ("91", {"title": "9.1 Scope Items",                  "table": "pqp.section91"}),
+        ("92", {"title": "9.2 Scope Notes",                  "table": "pqp.section92"}),
+    ]),
+    10: OrderedDict([
+        ("101", {"title": "10 Risk Register",                "table": "pqp.section101"}),
+    ]),
+}
+
+# name-matching hints for auto-guessing when a table name differs
+SECTION_KEYWORDS = {
+    31: ["section31","appoint","appointment"],
+    32: ["section32","milestone"],
+    33: ["section33","deliver","approval"],
+    41: ["section41","planning","design"],
+    42: ["section42","risk"],
+    51: ["section51","doc","documentation"],
+    52: ["section52","tender"],
+    61: ["section61","contract","order"],
+    62: ["section62","payment","certificate"],
+    63: ["section63","instruction","handover"],
+    71: ["section71","additional","service"],
+    72: ["section72","action","note"],
+    91: ["section91","scope","item"],
+    92: ["section92","scope","note"],
+    101:["section101","risk","register"],
+}
+
+# exact UI column set for 101 (Risk Register)
+COLS_101 = [
+    "id","risk_code","title","description","cause","consequence","category",
+    "likelihood","impact","treatment","owner","due_date","status",
+    "heading_id","extra","date_created","date_modified","row_id"
+]
+# ---------------------------------------------------------------------------
+
+# ---- PQP SUBSECTION → TABLE MAP (schema 'pqp') ----
+SUB_TABLE_MAP = {
+    31: "section31", 32: "section32", 33: "section33",
+    41: "section41", 42: "section42",
+    51: "section51", 52: "section52",
+    61: "section61", 62: "section62", 63: "section63",
+    71: "section71", 72: "section72",
+    91: "section91", 92: "section92",       # Scope Register
+    101: "risk_register"                     # Risk Register
+}
+# Columns we don't want to *display* by default (still kept in row dicts)
+HIDE_DISPLAY_COLS = {"id", "project_code", "project code", "tenant_id", "tenant id"}
 
 
 
@@ -116,6 +412,14 @@ def q(conn, sql, **params):
     return conn.execute(text(sql), params).mappings().all()
 
 def fetch_section_rows(conn, project_code: str, section_number: int):
+    """
+    Read rows for a *single-table* section using SECTION_TABLE/SECTION_COLS.
+    Composite sections (3, 9) are intentionally excluded and should use their dedicated loaders.
+    """
+    # Guard: composite/special sections are handled elsewhere
+    if section_number in (3, 9):
+        abort(400, f"Section {section_number} is composite; use its dedicated loader")
+
     table = SECTION_TABLE.get(section_number)
     cols  = SECTION_COLS.get(section_number)
     if not table or not cols:
@@ -953,7 +1257,7 @@ def pqp_ai_import_commit():
                 except Exception as e:
                     write_issues.append(f"_ensure_sections_by_code {idx} error: {e}")
                 try:
-                    _upsert_section_rows(project_id, idx, rows, columns=cols)
+                    _upsert_section_rows(project_id, idx, cols, rows)
                 except Exception as e:
                     write_issues.append(f"_upsert_section_rows {idx} error: {e}")
                     ok = False
@@ -1489,6 +1793,7 @@ def import_center():
 from flask import Blueprint, request, jsonify
 from werkzeug.datastructures import FileStorage
 
+
 # If not already imported:
 # from .parser import parse_workbook_to_payload
 # from .commit import commit_payload
@@ -1560,27 +1865,6 @@ def pqp_debug_dbinfo():
         counts["import_jobs"] = "N/A"
     return jsonify({"engine_url": url, "sqlite_file": dbpath, "counts": counts})
 
-@pqp_bp.get("/debug/sections/<code>")
-def pqp_debug_sections(code):
-    code = (code or "").strip().upper()
-    payload = []
-    for i in range(1, 10):
-        sec = PQPSection.query.filter_by(project_code=code, section_number=i).first()
-        rows = []
-        if sec:
-            raw = getattr(sec, "rows_json", None) or getattr(sec, "content", None)
-            if raw:
-                try:
-                    js = json.loads(raw)
-                    if isinstance(js, list):
-                        rows = js
-                    elif isinstance(js, dict) and "rows" in js:
-                        rows = js.get("rows") or []
-                except Exception:
-                    rows = []
-        payload.append({"section": i, "row_count": len(rows), "sample": rows[:3]})
-    return jsonify({"code": code, "sections": payload})
-
 
 
 # ======================= JSON API (non-UI)  =======================
@@ -1588,6 +1872,37 @@ def pqp_debug_sections(code):
 from flask import current_app
 
 pqp_api_bp = Blueprint("pqp_api", __name__, url_prefix="/api/pqp")
+
+@pqp_api_bp.post("/section/<code>/<int:sec_no>/materialize")
+def api_materialize_section(code, sec_no):
+    """
+    Copy rows (read-only hydrated from physical table) into PQPSection.rows_json
+    so the panel becomes editable. No schema changes; pure app-level copy.
+    """
+    if sec_no in (3,):
+        return jsonify({"ok": False, "error": "Section 3 is composite"}), 400
+
+    table = SECTION_TABLE.get(sec_no)
+    labels = SECTION_COLS.get(sec_no, [])
+    if not table or not labels:
+        return jsonify({"ok": False, "error": f"Unknown section {sec_no}"}), 404
+
+    with db.engine.connect() as conn:
+        raw = _fetch_table_rows(conn, table, code)
+
+    if not raw:
+        return jsonify({"ok": True, "copied": 0})
+
+    rows = [_remap_db_row(sec_no, r) for r in raw]
+    rows = [r for r in rows if any(v for k, v in r.items() if k != "id")]
+
+    # Persist into PQPSection using your existing helper
+    _upsert_section_rows(code, sec_no, labels, rows)
+
+    return jsonify({"ok": True, "copied": len(rows)})
+
+
+
 
 def _needs_org():
     return current_app.config.get("HAS_ORG_ID", False)
@@ -1750,6 +2065,104 @@ def api_delete_checklist(item_id: int):
     return jsonify(ok=True)
 # ===================== end JSON API (non-UI) ======================
 
+# ---------- BEGIN: generic CRUD for subsection tables ----------
+
+from flask import request, redirect, url_for
+from sqlalchemy import text
+
+EXCLUDE_INPUTS = {"id", "row_id", "tenant_id", "project_code", "created_at", "updated_at", "date_created", "date_modified"}
+
+def _split_qualified(qname: str):
+    if "." in qname:
+        s, t = qname.split(".", 1)
+        return s, t
+    return "public", qname
+
+def _pk_for_table(conn, qualified: str) -> str:
+    """Find PK column name; fallback to row_id or id."""
+    s, t = _split_qualified(qualified)
+    sql = """
+    select a.attname
+    from pg_index i
+    join pg_class c on c.oid = i.indrelid
+    join pg_namespace n on n.oid = c.relnamespace
+    join pg_attribute a on a.attrelid = i.indrelid and a.attnum = any(i.indkey)
+    where i.indisprimary and n.nspname=:s and c.relname=:t
+    """
+    pk = db.session.execute(text(sql), {"s": s, "t": t}).scalar()
+    return pk or ("row_id" if "row_id" in _introspect_columns_pretty(db.engine, t if s == "public" else qualified) else "id")
+
+def _columns_for(qualified: str):
+    s, t = _split_qualified(qualified)
+    return [c for c in _introspect_columns_pretty(db.engine, qualified)]
+
+def _filter_payload_for_table(qualified: str, code: str, form_or_json: dict):
+    cols = set(_columns_for(qualified))
+    data = {}
+    # carry tenant/project if present on table
+    if "tenant_id" in cols:
+        data["tenant_id"] = code
+    if "project_code" in cols:
+        data["project_code"] = code
+    for k, v in form_or_json.items():
+        if k in cols and k not in EXCLUDE_INPUTS:
+            data[k] = v
+    return data
+
+def _table_for_sub_required(sub_no: int) -> str:
+    spec = SUBSECTIONS.get(sub_no) or {}
+    qname = spec.get("table")
+    if not qname:
+        # last resort: your guesser
+        qname = _guess_table_for_sub(sub_no)
+    if not qname:
+        abort(404, f"No table mapping for subsection {sub_no}")
+    return qname
+
+# UI-post endpoints (redirect back to the form)
+@pqp_bp.post("/form/<code>/sub/<int:sub_no>/add")
+def pqp_ui_add_row(code, sub_no):
+    qname = _table_for_sub_required(sub_no)
+    payload = request.form.to_dict()
+    data = _filter_payload_for_table(qname, code, payload)
+    if not data:
+        flash("Nothing to save.", "warning")
+        return redirect(url_for("pqp.pqp_form_by_code", code=code))
+    cols_sql = ",".join(data.keys())
+    vals_sql = ",".join([f":{k}" for k in data.keys()])
+    sql = text(f"insert into {qname} ({cols_sql}) values ({vals_sql})")
+    db.session.execute(sql, data)
+    db.session.commit()
+    flash("Row added.", "success")
+    return redirect(url_for("pqp.pqp_form_by_code", code=code) + f"#sub-{sub_no}")
+
+@pqp_bp.post("/form/<code>/sub/<int:sub_no>/edit/<rid>")
+def pqp_ui_edit_row(code, sub_no, rid):
+    qname = _table_for_sub_required(sub_no)
+    payload = request.form.to_dict()
+    data = _filter_payload_for_table(qname, code, payload)
+    pk = _pk_for_table(db.engine, qname)
+    if not data:
+        flash("Nothing to update.", "warning")
+        return redirect(url_for("pqp.pqp_form_by_code", code=code))
+    sets = ",".join([f"{k}=:{k}" for k in data.keys()])
+    data["_rid"] = rid
+    sql = text(f"update {qname} set {sets} where {pk} = :_rid")
+    db.session.execute(sql, data)
+    db.session.commit()
+    flash("Row updated.", "success")
+    return redirect(url_for("pqp.pqp_form_by_code", code=code) + f"#sub-{sub_no}")
+
+@pqp_bp.post("/form/<code>/sub/<int:sub_no>/delete/<rid>")
+def pqp_ui_delete_row(code, sub_no, rid):
+    qname = _table_for_sub_required(sub_no)
+    pk = _pk_for_table(db.engine, qname)
+    db.session.execute(text(f"delete from {qname} where {pk}=:rid"), {"rid": rid})
+    db.session.commit()
+    flash("Row deleted.", "success")
+    return redirect(url_for("pqp.pqp_form_by_code", code=code) + f"#sub-{sub_no}")
+
+# ---------- END: generic CRUD for subsection tables ----------
 
 
 
@@ -1846,103 +2259,953 @@ def _load_section3_from_unified(engine, project_code):
 def pqp_form_by_code(code):
     """
     Project form for a single project_code.
-    Sections 1,2,4–9 come from PQPSection JSON.
-    Section 3 comes from pqp.section3_unified (parts 31/32/33).
+
+    - Sections 1,2,4,5,6,7,8,9 use PQPSection JSON; if empty we hydrate once from tables.
+    - Composite sections (3.x, 4.x, 5.x, 6.x, 7.x, 9.x, 10/101) are rendered from their
+      own physical tables; even with 0 rows we still provide column headers so the
+      template always shows the panel and keeps your layout intact.
     """
-    from datetime import date, datetime
+    code = _norm_code(code)
 
-    # ---- Project header (from "ProjectRecords" view) ----
+    # ---------- Project header ----------
     PR = _projectrecords(db.engine)
-
-    # Required columns, plus optional ones if present
     cols = [
         _col(PR, PR_COL_CODE).label("Code"),
         _col(PR, PR_COL_SHORTDESC).label("Short Description"),
         _col(PR, PR_COL_CLIENT).label("Client"),
         _col(PR, PR_COL_PM).label("Project Manager"),
     ]
-    for cname, lbl in [("start_date", "start_date"),
-                       ("end_date", "end_date"),
-                       (PR_COL_STATUS, "Status")]:
+    # add optional columns if they exist
+    for cname, lbl in (("start_date", "start_date"), ("end_date", "end_date"), (PR_COL_STATUS, "Status")):
         try:
             cols.append(_col(PR, cname).label(lbl))
         except KeyError:
             pass
 
-    row = db.session.execute(
-        select(*cols).where(_col(PR, PR_COL_CODE) == code)
-    ).first()
+    row = db.session.execute(select(*cols).where(_col(PR, PR_COL_CODE) == code)).first()
     if not row:
         flash("Project Code not found.", "danger")
         return redirect(url_for("pqp.pqp_form_select_by_code"))
-
-    # stringify DB values for the template
     project = {k: _to_str(v) for k, v in row._mapping.items()}
-
-    # Derive a Status if the view doesn't provide one
     if not project.get("Status"):
-        status = "Active"
+        # cheap inferred status
         try:
             end_dt = row._mapping.get("end_date")
             if isinstance(end_dt, datetime):
-                status = "Closed" if end_dt.date() < date.today() else "Active"
+                project["Status"] = "Closed" if end_dt.date() < date.today() else "Active"
             elif isinstance(end_dt, date):
-                status = "Closed" if end_dt < date.today() else "Active"
+                project["Status"] = "Closed" if end_dt < date.today() else "Active"
+            else:
+                project["Status"] = "Active"
         except Exception:
-            pass
-        project["Status"] = status
+            project["Status"] = "Active"
 
-    # ---- Ensure PQPSection scaffold exists ----
+    # ---------- Ensure scaffolding ----------
     _ensure_sections_by_code(code)
 
-    # ---- Load sections 1,2,4–9 from PQPSection ----
-    section_columns = SECTION_DEFS
-    section_data = [[] for _ in range(len(section_columns))]
+    # ---------- Single-table panels (1,2,4,5,6,7,8,9) from PQPSection ----------
+    section_columns = list(SECTION_DEFS)
+    if len(section_columns) < 10:
+        section_columns += [[] for _ in range(10 - len(section_columns))]
+    section_count = len(section_columns)
+    section_data = [[] for _ in range(section_count)]
 
     def _rows_of(sec):
         payload = None
-        if hasattr(sec, "rows_json") and sec.rows_json:
+        if getattr(sec, "rows_json", None):
             try:
                 payload = json.loads(sec.rows_json)
             except Exception:
-                pass
+                payload = None
         if payload is None and getattr(sec, "content", None):
             try:
                 payload = json.loads(sec.content)
             except Exception:
-                pass
+                payload = None
         if isinstance(payload, list):
             return payload
         if isinstance(payload, dict) and isinstance(payload.get("rows"), list):
             return payload["rows"]
         return []
 
-    sections = (PQPSection.query
+    for sec in (PQPSection.query
                 .filter_by(project_code=code)
                 .order_by(PQPSection.section_number)
-                .all())
+                .all()):
+        snum = (sec.section_number or 1)
+        if snum in {3, 31, 32, 33, 41, 42, 51, 52, 61, 62, 63, 71, 72, 91, 92, 101}:
+            continue  # sub-panels handled separately
+        if 1 <= snum <= section_count:
+            cols_for_panel = section_columns[snum - 1] or ["title", "description"]
+            section_data[snum - 1].extend(_normalize_rows(cols_for_panel, _rows_of(sec)))
 
-    for sec in sections:
-        if (sec.section_number or 1) == 3:
-            continue
-        idx = max(0, (sec.section_number or 1) - 1)
-        cols = section_columns[idx]
-        section_data[idx].extend(_normalize_rows(cols, _rows_of(sec)))
+    # If a single-table section has *no* JSON rows, try hydrating once from physical tables
+    try:
+        hydration_meta = _hydrate_from_tables_if_empty(code, section_columns, section_data)
+    except Exception:
+        hydration_meta = {}
 
-    # ---- Load Section 3 (parts 31/32/33) from pqp.section3_unified ----
-    # old:
-    # section3_cols, section3_data = _load_section3_from_unified(db.engine, code)
+    # ---------- Composite/multi-table panels (3.x,4.x,5.x,6.x,7.x,9.x,10/101) ----------
+    group_cols, group_data, group_meta = {}, {}, {}
+    with db.engine.connect() as conn:
+        for parent_no, parts in SUBSECTIONS.items():
+            for sub_code, spec in parts.items():
+                sub_no = int(sub_code)
+                table = spec.get("table")
 
-    # new:
-    section3_cols, section3_data = _load_section3_from_parts(code)
+                # Always provide column headers so the panel renders even with 0 rows
+                labels = _introspect_columns_pretty(conn, table) if table else []
+
+                # Data: try the declared table; if nothing, try a name-guess
+                raw = _fetch_table_rows(conn, table, code) if table else []
+                guessed = None
+                if not raw:
+                    guessed = _guess_table_for_sub(conn, sub_no, spec.get("title", ""))
+                    if guessed:
+                        labels = _introspect_columns_pretty(conn, guessed) or labels
+                        raw = _fetch_table_rows(conn, guessed, code)
+
+                rows = [_remap_db_row_to_labels(labels, r) for r in raw] if raw else []
+
+                # Store (even if rows == [] so Jinja shows the shell)
+                group_cols[sub_no] = labels
+                group_data[sub_no] = rows
+                group_meta[sub_no] = {
+                    "hydrated": bool(rows),
+                    "table": guessed or table or "(none)",
+                    "rowcount": len(rows),
+                    "guessed": bool(guessed and rows),
+                }
+    # Build tab titles 1..9 from your canonical titles dict
+    section_titles = [DEFAULT_SECTION_TITLES.get(i, f"Section {i}") for i in range(1, 10)]
 
 
+    # ---------- Render ----------
     return render_template(
         "pqp_form.html",
+        code=code,
         project=project,
-        section_columns=section_columns,  # non-Section-3 panels
-        section_data=section_data,        # non-Section-3 panels
-        section3_cols=section3_cols,      # {'31':[...],'32':[...],'33':[...]}
-        section3_data=section3_data,      # {'31':[{}],'32':[{}],'33':[{}]}
-        pqp_detail=None,
+        sections=section_titles,        # was SECTIONS (undefined)
+        section_columns=section_columns,    # was section_cols
+        section_data=section_data,          # was section_rows
+        p_cols=group_cols,
+        p_rows=group_data,
+        p_meta=group_meta,                  # was p_meta (undefined)
+        read_only=True,
+        read_only=False,           # show Add/Edit/Delete (set True to lock)
+        show_debug_tables=False,   # hides “pqp.sectionXX” name badges
     )
+
+
+
+
+def _infer_cols(rows):
+    if not rows:
+        return []
+    keys = []
+    seen = set()
+    for r in rows:
+        if isinstance(r, dict):
+            for k in r.keys():
+                if k not in seen:
+                    keys.append(k); seen.add(k)
+    return keys
+
+
+
+
+def _get_project_pk(conn, project_code: str):
+    """Return numeric pqp.project.id for a given project_code, or None."""
+    from sqlalchemy import text
+    try:
+        return conn.execute(
+            text("select id from pqp.project where project_code = :c"),
+            {"c": project_code}
+        ).scalar()
+    except Exception:
+        return None
+
+def _fetch_table_rows(conn, table_qualified: str, project_code: str):
+    """
+    Read rows for this project from a physical section table.
+    Tries, in order:
+      1) project_code = :code
+      2) id (TEXT) = :code
+      3) project_id (INT) = project.id for :code
+    Returns a list[dict].
+    """
+    from sqlalchemy import text
+    schema, table = table_qualified.split(".", 1)
+
+    # Introspect columns + types once
+    cols = conn.execute(text("""
+        select column_name, data_type
+        from information_schema.columns
+        where table_schema = :s and table_name = :t
+    """), {"s": schema, "t": table}).mappings().all()
+    col_types = {r["column_name"]: (r["data_type"] or "").lower() for r in cols}
+    col_names = set(col_types.keys())
+
+    # 1) project_code TEXT
+    if "project_code" in col_names:
+        rows = conn.execute(
+            text(f"select * from {table_qualified} where project_code = :code order by 1"),
+            {"code": project_code}
+        ).mappings().all()
+        return [dict(r) for r in rows]
+
+    # 2) id TEXT (be careful not to use it when it's a numeric PK)
+    if "id" in col_names and "character" in col_types.get("id", "") or col_types.get("id") == "text":
+        rows = conn.execute(
+            text(f"select * from {table_qualified} where id = :code order by 1"),
+            {"code": project_code}
+        ).mappings().all()
+        return [dict(r) for r in rows]
+
+    # 3) project_id INT (FK to pqp.project.id)
+    if "project_id" in col_names:
+        pid = _get_project_pk(conn, project_code)
+        if pid is not None:
+            rows = conn.execute(
+                text(f"select * from {table_qualified} where project_id = :pid order by 1"),
+                {"pid": pid}
+            ).mappings().all()
+            return [dict(r) for r in rows]
+
+    # If none matched, last resort: try id numerically == project PK
+    if "id" in col_names and "integer" in col_types.get("id", ""):
+        pid = _get_project_pk(conn, project_code)
+        if pid is not None:
+            rows = conn.execute(
+                text(f"select * from {table_qualified} where id = :pid order by 1"),
+                {"pid": pid}
+            ).mappings().all()
+            return [dict(r) for r in rows]
+
+    return []
+
+
+def _remap_db_row(section_no: int, raw: dict) -> dict:
+    """
+    Map a physical DB row (raw) to the UI labels for a section.
+    1) Try the explicit DB_TO_UI_COLS map (exact snake_case keys).
+    2) If most labels are still empty, fall back to a tolerant matcher:
+       - case-insensitive
+       - ignores spaces, punctuation, accents
+       - uses synonyms per label (e.g., 'Cell' ~ mobile/phone)
+       - 'id' is taken from project_code or id
+    """
+    labels = SECTION_COLS.get(section_no, [])
+    out = {lbl: "" for lbl in labels}
+
+    if not isinstance(raw, dict) or not labels:
+        return out
+
+    # --- 1) exact mapping path (kept as-is) ---
+    mapping = DB_TO_UI_COLS.get(section_no, {})
+    used_db_cols = set()
+    for db_key, ui_label in mapping.items():
+        if ui_label in out and db_key in raw:
+            val = raw.get(db_key)
+            out[ui_label] = _to_str(val)
+            used_db_cols.add(db_key)
+
+    # always set 'id' when present in the label spec
+    if "id" in out and not out["id"]:
+        out["id"] = _to_str(raw.get("project_code") or raw.get("id") or "")
+
+    # if we already filled most labels, stop here
+    filled = sum(1 for k, v in out.items() if k != "id" and v not in (None, ""))
+    if filled >= max(1, (len(labels) - ("id" in labels)) // 2):
+        return out
+
+    # --- 2) tolerant matcher (fallback) ---
+    import re, unicodedata
+
+    def norm(s: str) -> str:
+        s = unicodedata.normalize("NFKD", str(s or "")).encode("ascii", "ignore").decode()
+        return re.sub(r"[^a-z0-9]+", "", s.strip().lower())
+
+    db_cols = [c for c in raw.keys() if c not in used_db_cols]
+    norm_db = {c: norm(c) for c in db_cols}
+
+    # synonyms by UI label (expandable)
+    SYN = {
+        # Section 1
+        "Project Description": ["description", "projectdesc", "projdesc"],
+        "Location":            ["location", "loc"],
+        "Client Organisation": ["clientorganisation", "clientorganization", "clientorg", "client"],
+        "Primary Contact Name":["primarycontactname", "contactname", "representativename", "name"],
+        "VAT Number":          ["vat", "vatno", "vatnumber"],
+        "Designation":         ["designation", "title", "position"],
+        "Invoice Address":     ["invoiceaddress", "billingaddress"],
+        # Section 2
+        "Role":                ["role", "position"],
+        "Req'd":               ["reqd", "required", "mandatory", "needed"],
+        "Organisation":        ["organisation", "organization", "org", "company", "firm"],
+        "Representative Name": ["representativename", "repname", "contactname", "name"],
+        "Email":               ["email", "e_mail", "mail"],
+        "Cell":                ["cell", "mobile", "phone", "tel", "telephone", "contactnumber"],
+        "Subconsultant to HN?":      ["subconsultanttohn", "subconsultant", "tohn", "issubconsultant"],
+        "Subconsultant Agreement?":  ["subconsultantagreement", "subagreement", "hasagreement"],
+        "CPG Partner?":        ["cpgpartner", "iscpgpartner"],
+        "CPG %":               ["cpgpercent", "cpgpct", "cpgpercentage", "cpg"],
+        "Comments":            ["comments", "notes", "remarks", "comment"],
+        # Section 4
+        "Design Criteria/Requirements": ["designcriteria", "requirements", "designrequirements"],
+        "Planning & Design Risks":      ["planningdesignrisks", "designrisks", "risks"],
+        "Scope Register Location":      ["scoperegisterlocation", "scopelocation", "registerlocation"],
+        "Design Notes":                 ["designnotes", "notes"],
+        # Section 5
+        "Client Tender Doc Requirements": ["clienttenderdocrequirements", "tenderrequirements"],
+        "Form of Contract":              ["formofcontract", "contractform"],
+        "Standard Specs":                ["standardspecs", "specs", "specifications"],
+        "Client Template Date":          ["clienttemplatedate", "templatedate"],
+        "Documentation Risks":           ["documentationrisks", "docsrisks", "risks"],
+        "Tender Phase Notes":            ["tenderphasenotes", "notes"],
+        # Section 6 (subset; many columns – matcher will still align)
+        "Construction Description": ["constructiondescription", "description"],
+        "Contractor Organisation":  ["contractororganisation", "contractororganization", "contractor", "org"],
+        "Contract Number":          ["contractnumber", "contractno"],
+        "Award Value (incl VAT)":   ["awardvalueinclvat", "awardvalue", "value", "amount"],
+        "Award Date":               ["awarddate"],
+        "Original Order No":        ["originalorderno", "origorderno"],
+        "Original Date of Order":   ["originaldateoforder", "origorderdate"],
+        "Inception Meeting Date":   ["inceptionmeetingdate", "inceptiondate"],
+        "Final Payment Cert Date":  ["finalpaymentcertdate", "finalpaymentdate"],
+        "Final Value (incl VAT)":   ["finalvalueinclvat", "finalvalue"],
+        "Commencement of Works":    ["commencementofworks", "commencement"],
+        "Date of EA's Instruction": ["dateofeasinstruction", "eainstructiondate"],
+        "Where Instruction Recorded":["whereinstructionrecorded", "instructionlocation", "recordlocation"],
+        "Completion Date":          ["completiondate"],
+        "Final Approval Date":      ["finalapprovaldate"],
+        "Client Takeover Date":     ["clienttakeoverdate"],
+        "Commencement Instruction Date": ["commencementinstructiondate"],
+        "Commencement Instruction Location": ["commencementinstructionlocation"],
+        "Construction Phase Risks": ["constructionphaserisks", "risks"],
+        "Construction Phase Notes": ["constructionphasenotes", "notes"],
+        # Section 7
+        "Additional Services Done": ["additionalservicesdone", "additionalservices", "servicesdone"],
+        "Project-specific Risks":   ["projectspecificrisks", "risks"],
+        "Mitigating Measures":      ["mitigatingmeasures", "mitigation"],
+        "Record of Action Taken":   ["recordofactiontaken", "actiontaken", "actions"],
+        # Section 8
+        "Date CSQ Submitted":       ["datecsqsubmitted", "csqsubmitteddate"],
+        "Date CSQ Received":        ["datecsqreceived", "csqreceiveddate"],
+        "CSQ Rating":               ["csqrating", "rating"],
+        "Comments on Feedback":     ["commentsonfeedback", "feedbackcomments"],
+        "Actual Close-Out Date":    ["actualcloseoutdate", "closeoutdate"],
+        "General Remarks/Lessons Learned": ["generalremarkslessonslearned", "generalremarks", "lessonslearned"],
+        # Section 9
+        "Scope Item":               ["scopeitem", "item"],
+        "Category":                 ["category"],
+        "Owner":                    ["owner", "responsible"],
+        "Status":                   ["status", "state"],
+        "Due Date":                 ["duedate", "due"],
+        "Notes":                    ["notes", "comments", "remarks"],
+    }
+
+    def find_best(ui_label: str):
+        targets = SYN.get(ui_label, [])
+        n_targets = [norm(t) for t in targets] + [norm(ui_label)]
+        # exact/contains preference
+        for db_name, ndb in norm_db.items():
+            for nt in n_targets:
+                if nt and (ndb == nt or nt in ndb or ndb in nt):
+                    return db_name
+        # fallback: token overlap score
+        best, best_score = None, 0
+        toks = set(re.findall(r"[a-z0-9]+", n_targets[-1]))
+        for db_name, ndb in norm_db.items():
+            score = sum(1 for t in toks if t and t in ndb)
+            if score > best_score:
+                best, best_score = db_name, score
+        return best
+
+    for lbl in labels:
+        if lbl == "id":
+            continue
+        if out.get(lbl):
+            continue
+        cand = find_best(lbl)
+        if cand and raw.get(cand) is not None:
+            out[lbl] = _to_str(raw.get(cand))
+
+    return out
+
+def _hydrate_from_tables_if_empty(project_code: str, section_columns, section_data):
+    """
+    If a section has no JSON rows, pull from a configured table; if that gives no rows,
+    guess a better table by name and use it. Returns meta per section for the UI.
+    """
+    meta = {}
+    with db.engine.connect() as conn:
+        for sec_no in range(1, min(10, len(section_columns)) + 1):
+            if sec_no in (3,):
+                continue
+
+            configured = SECTION_TABLE.get(sec_no)
+            table_to_use = configured
+            rows = []
+
+            if configured:
+                rows = _fetch_table_rows(conn, configured, project_code)
+
+            # auto-guess if nothing came back
+            guessed = None
+            if not rows:
+                guessed = _guess_table_for_section(conn, sec_no, project_code)
+                if guessed and guessed != configured:
+                    try:
+                        rows = _fetch_table_rows(conn, guessed, project_code)
+                        if rows:
+                            SECTION_TABLE[sec_no] = guessed  # cache for this process
+                            table_to_use = guessed
+                    except Exception:
+                        pass
+
+            labels = SECTION_COLS.get(sec_no, [])
+            if rows and labels:
+                hydrated = [_remap_db_row(sec_no, r) for r in rows]
+                hydrated = [r for r in hydrated if any(v for k, v in r.items() if k != "id")]
+                if hydrated and not section_data[sec_no - 1]:
+                    section_data[sec_no - 1].extend(hydrated)
+                meta[sec_no] = {
+                    "hydrated": True,
+                    "table": table_to_use or configured or "(auto)",
+                    "rowcount": len(hydrated),
+                    "guessed": (table_to_use == guessed and guessed is not None)
+                }
+            else:
+                meta[sec_no] = {
+                    "hydrated": False,
+                    "table": table_to_use or configured or "(none)",
+                    "rowcount": 0,
+                    "guessed": False
+                }
+    return meta
+
+
+
+# Heuristics to spot tables by name if SECTION_TABLE is wrong/missing
+SECTION_KEYWORDS = {
+    1: ["overview", "project_overview", "section1"],
+    2: ["team", "project_team", "section2"],
+    4: ["planning", "design", "planning_design", "section4"],
+    5: ["documentation", "docs", "tender", "section5"],
+    6: ["works", "handover", "construction", "section6"],
+    7: ["additional", "services", "section7"],
+    8: ["close", "closeout", "feedback", "section8"],
+    9: ["scope", "register", "scope_register", "section9"],
+}
+
+
+# === BEGIN ADD: multi-table section helpers ================================
+
+def _ensure_id_in_row(d: dict) -> dict:
+    """Guarantee an 'id' key exists (string) so editing and the UI are stable."""
+    if "id" not in d:
+        d["id"] = _to_str(d.get("row_id") or d.get("project_code") or d.get("heading_id") or "")
+    return d
+
+def _derive_columns_from_table(conn, table_qualified: str) -> list[str]:
+    """Ordered column names using information_schema; 'id' first if present."""
+    cols = _columns_for_table(db.engine, table_qualified)
+    # keep 'id' first when available
+    if "id" in cols:
+        cols = ["id"] + [c for c in cols if c != "id"]
+    return cols
+
+def _normalize_rows_for_columns(cols: list[str], raw_rows: list[dict]) -> list[dict]:
+    """Map each raw DB row into a dict with exactly the keys in cols, stringified."""
+    out = []
+    for r in raw_rows or []:
+        d = {c: _to_str(r.get(c)) for c in cols}
+        d = _ensure_id_in_row(d)
+        out.append(d)
+    return out
+
+def _load_multipart_section(code: str, section_no: int):
+    """
+    Generic loader for sections that consist of multiple physical tables.
+    Returns (cols_by_part: dict, rows_by_part: dict, meta_by_part: dict).
+    If SECTION_PART_COLS is missing for a part, we derive columns from the table.
+    """
+    parts = SECTION_PART_TABLES.get(section_no, {})
+    cols_by_part, rows_by_part, meta_by_part = {}, {}, {}
+
+    if not parts:
+        return cols_by_part, rows_by_part, meta_by_part
+
+    with db.engine.connect() as conn:
+        for part_key, (title, table) in parts.items():
+            try:
+                raw = _fetch_table_rows(conn, table, code)
+            except Exception as e:
+                raw, err = [], str(e)
+            else:
+                err = None
+
+            # Use declared columns when available; otherwise derive
+            cols = (SECTION_PART_COLS.get(section_no, {}).get(part_key)
+                    or _derive_columns_from_table(conn, table))
+
+            rows = _normalize_rows_for_columns(cols, raw)
+            cols_by_part[part_key] = cols
+            rows_by_part[part_key] = rows
+            meta_by_part[part_key] = {
+                "title": title,
+                "table": table,
+                "rowcount": len(rows),
+                "error": err,
+            }
+
+    return cols_by_part, rows_by_part, meta_by_part
+
+# === END ADD: multi-table section helpers ==================================
+
+# --- Helpers for multi-table sections (add once) ---------------------------
+# --- Build "multipart" (multi-table payload for sections 3,4,5,6,7,9,10) ----
+def _fetch_rows_for_project(conn, table_qualified: str, project_code: str):
+    """Return (columns, rows) for the given table filtered to this project."""
+    from sqlalchemy import text
+    try:
+        schema, table = table_qualified.split('.', 1)
+    except ValueError:
+        return [], []
+    meta = conn.execute(text("""
+        select column_name, data_type
+        from information_schema.columns
+        where table_schema=:s and table_name=:t
+        order by ordinal_position
+    """), {"s": schema, "t": table}).mappings().all()
+    colnames = [m["column_name"] for m in meta]
+    coltypes = {m["column_name"]: (m["data_type"] or "").lower() for m in meta}
+
+    # choose the best filter column
+    where, params = None, {}
+    if "project_code" in colnames:
+        where, params = "project_code=:pc", {"pc": project_code}
+    elif "id" in colnames and (("character" in coltypes["id"]) or coltypes["id"] == "text"):
+        where, params = "id=:pc", {"pc": project_code}
+    elif "project_id" in colnames:
+        pid = _get_project_pk(conn, project_code)  # you already have this helper
+        if pid is not None:
+            where, params = "project_id=:pid", {"pid": pid}
+    elif "id" in colnames and "integer" in coltypes["id"]:
+        pid = _get_project_pk(conn, project_code)
+        if pid is not None:
+            where, params = "id=:pid", {"pid": pid}
+
+    q = f"select * from {table_qualified}"
+    if where: q += f" where {where}"
+    q += " order by 1 desc"
+    rows = conn.execute(text(q), params).mappings().all()
+    return colnames, rows
+
+def _build_multipart(conn, project_code: str) -> dict:
+    """
+    Shape:
+      { <section_no>: {
+          'parts': SUBSECTIONS[section_no],   # mapping of sub keys -> {title, table?}
+          'cols':  {sub_key: [labels...]},
+          'rows':  {sub_key: [row-dicts]},
+          'rowcount': int
+        }, ... }
+    """
+    result = {}
+    for sec_no, parts in SUBSECTIONS.items():
+        sec_payload = {"parts": parts, "cols": {}, "rows": {}, "rowcount": 0}
+        for sub_key, spec in parts.items():
+            tbl = spec.get("table") or _guess_table_for_sub(conn, int(sub_key), spec.get("title", ""))
+            if not tbl:
+                continue
+            labels = _introspect_columns_pretty(conn, tbl) or []
+            _cols, raw_rows = _fetch_rows_for_project(conn, tbl, project_code)
+            mapped = [_remap_db_row_to_labels(labels or _cols, dict(r)) for r in raw_rows]
+            sec_payload["cols"][sub_key] = labels or _cols
+            sec_payload["rows"][sub_key] = mapped
+            sec_payload["rowcount"] += len(mapped)
+        result[sec_no] = sec_payload
+    return result
+# ---------------------------------------------------------------------------
+def _fetch_all_dicts(conn, sql, params=()):
+    with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+        cur.execute(sql, params)
+        return [dict(r) for r in cur.fetchall()]
+
+def _introspect_columns(conn, schema, table):
+    sql = """
+    select column_name
+    from information_schema.columns
+    where table_schema = %s and table_name = %s
+    order by ordinal_position
+    """
+    rows = _fetch_all_dicts(conn, sql, (schema, table))
+    return [r["column_name"] for r in rows]
+
+def hydrate_known_sections(conn, project_code):
+    """
+    Returns:
+      (group_cols, group_data)
+      group_cols: {sub_no: [col1, col2, ...]}
+      group_data: {sub_no: [row_dict, ...]}
+    The row dicts include *all* columns; group_cols hides noisy keys for display.
+    """
+    g_cols, g_rows = {}, {}
+
+    code = (project_code or "").strip()
+
+    for sub_no, tbl in SUB_TABLE_MAP.items():
+        # Only proceed if table exists
+        cols = _introspect_columns(conn, "pqp", tbl)
+        if not cols:
+            continue
+
+        # Generic filter: many of your tables use either tenant_id or project_code
+        sql = f"""
+            select *
+            from pqp.{tbl}
+            where (tenant_id = %s or project_code = %s)
+            order by 1
+        """
+        rows = _fetch_all_dicts(conn, sql, (code, code))
+
+        # Choose display columns: keep order from introspection
+        display_cols = [c for c in cols if c.lower() not in HIDE_DISPLAY_COLS]
+        g_cols[sub_no] = display_cols
+        g_rows[sub_no] = rows
+
+    return g_cols, g_rows
+
+
+
+def _introspect_columns_pretty(conn, table_qualified: str):
+    """Return list of column labels taken from information_schema, with 'id' first if present."""
+    from sqlalchemy import text
+    try:
+        schema, table = table_qualified.split('.',1)
+    except ValueError:
+        return []
+    cols = [r[0] for r in conn.execute(text("""
+        select column_name
+        from information_schema.columns
+        where table_schema=:s and table_name=:t
+        order by ordinal_position
+    """), {"s": schema, "t": table}).fetchall()]
+
+    def pretty(c):
+        if c == "id":
+            return "id"
+        return " ".join(w.capitalize() for w in c.replace("_"," ").split())
+
+    if "id" in cols:
+        return ["id"] + [pretty(c) for c in cols if c!="id"]
+    return [pretty(c) for c in cols]
+
+def _list_pqp_tables(conn):
+    from sqlalchemy import text
+    return [f"{r['table_schema']}.{r['table_name']}" for r in conn.execute(text("""
+        select table_schema, table_name
+        from information_schema.tables
+        where table_schema='pqp' and table_type='BASE TABLE'
+    """)).mappings()]
+
+def _count_rows_for_table(conn, table_qualified: str, project_code: str):
+    """Return count of rows in table that belong to this project."""
+    from sqlalchemy import text
+    try:
+        schema, table = table_qualified.split('.',1)
+    except ValueError:
+        return 0
+    cols = {r['column_name']: (r['data_type'] or '').lower() for r in conn.execute(text("""
+        select column_name, data_type
+        from information_schema.columns
+        where table_schema=:s and table_name=:t
+    """), {"s": schema, "t": table}).mappings()}
+    names = set(cols)
+
+    # project_code column
+    if "project_code" in names:
+        try:
+            return int(conn.execute(text(f"select count(*) from {table_qualified} where project_code=:c"),
+                                    {"c": project_code}).scalar() or 0)
+        except Exception:
+            pass
+    # id as text
+    if "id" in names and ("character" in cols.get("id","") or cols.get("id")=="text"):
+        try:
+            return int(conn.execute(text(f"select count(*) from {table_qualified} where id=:c"),
+                                    {"c": project_code}).scalar() or 0)
+        except Exception:
+            pass
+    # project_id integer FK
+    if "project_id" in names:
+        try:
+            pid = _get_project_pk(conn, project_code)  # present elsewhere in your file
+        except Exception:
+            pid = None
+        if pid is not None:
+            try:
+                return int(conn.execute(text(f"select count(*) from {table_qualified} where project_id=:p"),
+                                        {"p": pid}).scalar() or 0)
+            except Exception:
+                pass
+    # id as int (FK)
+    if "id" in names and "integer" in cols.get("id",""):
+        try:
+            pid = _get_project_pk(conn, project_code)
+        except Exception:
+            pid = None
+        if pid is not None:
+            try:
+                return int(conn.execute(text(f"select count(*) from {table_qualified} where id=:p"),
+                                        {"p": pid}).scalar() or 0)
+            except Exception:
+                pass
+    return 0
+
+def _guess_table_for_sub(conn, sub_no: int, title: str):
+    """Pick the most name-relevant table for a sub-section (e.g. 31, 41, 101)."""
+    keywords = set(SECTION_KEYWORDS.get(sub_no, []))
+    keywords |= {str(sub_no)}
+    keywords |= {w.lower() for w in (title or "").split()}
+    best_tbl, best_score = None, -1
+    for tbl in _list_pqp_tables(conn):
+        name = tbl.split('.',1)[1].lower()
+        score = sum(1 for k in keywords if k and k in name)
+        if score > best_score:
+            best_tbl, best_score = tbl, score
+    return best_tbl
+
+def _remap_db_row_to_labels(labels: list, raw: dict) -> dict:
+    """Map a raw DB row into a dict keyed by the provided labels (tolerant matching)."""
+    out = {lbl: "" for lbl in labels}
+    # id
+    if "id" in out:
+        out["id"] = _to_str(raw.get("project_code") or raw.get("id") or raw.get("project_id") or "")
+    # tolerant name match
+    import re, unicodedata
+    def norm(s):
+        s = unicodedata.normalize("NFKD", str(s or "")).encode("ascii","ignore").decode()
+        return re.sub(r"[^a-z0-9]+","",s.strip().lower())
+    norm_db = {k: norm(k) for k in raw.keys()}
+    for lbl in labels:
+        if lbl == "id":
+            continue
+        nl = norm(lbl)
+        match = None
+        for k, nk in norm_db.items():
+            if nk == nl or nl in nk or nk in nl:
+                match = k
+                break
+        if match and raw.get(match) is not None:
+            out[lbl] = _to_str(raw.get(match))
+    return out
+# ---------------------------------------------------------------------------
+
+
+
+
+
+# --- Debug: counts of sections and backing tables ---
+
+@pqp_bp.route("/debug/guess/<code>")
+def debug_guess(code):
+    from sqlalchemy import text
+    out = {"code": code, "project_pk": None, "sections": []}
+    with db.engine.connect() as conn:
+        out["project_pk"] = _get_project_pk(conn, code)
+        for sec_no in range(1, 10):
+            configured = SECTION_TABLE.get(sec_no)
+            guessed = _guess_table_for_section(conn, sec_no, code)
+            data = {"section": sec_no, "configured": configured, "guessed": guessed}
+            if configured:
+                data["configured_count"] = _count_rows_for_table(conn, configured, code)
+            if guessed:
+                data["guessed_count"] = _count_rows_for_table(conn, guessed, code)
+            out["sections"].append(data)
+    return jsonify(out)
+
+
+
+@pqp_bp.route("/debug/hydrate/<code>")
+def debug_hydrate(code):
+    from sqlalchemy import text
+    out = {"code": code, "tables": {}}
+    with db.engine.connect() as conn:
+        # figure out project PK
+        pid = _get_project_pk(conn, code)
+        out["project_pk"] = pid
+
+        for sec_no, tbl in SECTION_TABLE.items():
+            if not tbl:
+                continue
+            schema, table = tbl.split(".", 1)
+            cols = conn.execute(text("""
+                select column_name, data_type
+                from information_schema.columns
+                where table_schema = :s and table_name = :t
+            """), {"s": schema, "t": table}).mappings().all()
+            col_types = {r["column_name"]: (r["data_type"] or "").lower() for r in cols}
+            col_names = set(col_types.keys())
+
+            used = None
+            count = None
+
+            try:
+                if "project_code" in col_names:
+                    used = "project_code"
+                    count = conn.execute(text(f"select count(*) from {tbl} where project_code=:c"), {"c": code}).scalar()
+                elif "id" in col_names and ("character" in col_types.get("id", "") or col_types.get("id") == "text"):
+                    used = "id(text)"
+                    count = conn.execute(text(f"select count(*) from {tbl} where id=:c"), {"c": code}).scalar()
+                elif "project_id" in col_names and pid is not None:
+                    used = f"project_id={pid}"
+                    count = conn.execute(text(f"select count(*) from {tbl} where project_id=:p"), {"p": pid}).scalar()
+                elif "id" in col_names and "integer" in col_types.get("id", "") and pid is not None:
+                    used = f"id={pid}"
+                    count = conn.execute(text(f"select count(*) from {tbl} where id=:p"), {"p": pid}).scalar()
+                else:
+                    used = "no match"
+                    count = None
+            except Exception as e:
+                used = f"error: {e}"
+                count = None
+
+            out["tables"][sec_no] = {"table": tbl, "filter": used, "count": int(count) if count is not None else None}
+    return jsonify(out)
+
+# Debug: inspect hydrated subsections for a project code
+# ---------- DEBUG ENDPOINTS ----------
+# At the very top of this file, make sure you have:
+#   from flask import jsonify
+# and you're already using:
+#   pqp_bp = Blueprint("pqp", __name__, url_prefix="/pqp")
+
+@pqp_bp.route("/debug/hydrate/<code>")
+def pqp_debug_hydrate(code):
+    """
+    Rich debug: shows each hydrated sub-table with col names and row counts.
+    URL: /pqp/debug/hydrate/<code>
+    """
+    with get_db_connection() as conn:
+        group_cols, group_data = hydrate_known_sections(conn, code)
+        out = []
+        for sub_no in sorted(group_cols):
+            out.append({
+                "sub": sub_no,
+                "table": SUB_TABLE_MAP.get(sub_no),
+                "cols": group_cols[sub_no],
+                "row_count": len(group_data.get(sub_no, [])),
+            })
+        return jsonify({"code": code, "subs": out})
+
+
+@pqp_bp.route("/debug/sections/<code>")
+def pqp_debug_sections(code):
+    """
+    Backwards-compatible debug view (keeps your older URL working) but
+    powered by the same hydrator so it reflects real data.
+    URL: /pqp/debug/sections/<code>
+    """
+    with get_db_connection() as conn:
+        group_cols, group_data = hydrate_known_sections(conn, code)
+        sections = []
+        for sub_no in sorted(group_cols):
+            sections.append({
+                "section": sub_no,                      # keeping key name "section"
+                "row_count": len(group_data.get(sub_no, [])),
+                "sample": group_data.get(sub_no, [])[:1]  # sample first row
+            })
+        return jsonify({"code": code, "sections": sections})
+# -------------------------------------
+
+
+
+def _list_pqp_tables(conn):
+    from sqlalchemy import text
+    rs = conn.execute(text("""
+        select table_schema, table_name
+        from information_schema.tables
+        where table_schema='pqp' and table_type='BASE TABLE'
+    """)).mappings().all()
+    return [f"{r['table_schema']}.{r['table_name']}" for r in rs]
+
+def _count_rows_for_table(conn, table_qualified: str, project_code: str):
+    """
+    Return number of rows for this project in a given table, trying project_code, id(text), project_id, id(int).
+    """
+    from sqlalchemy import text
+    try:
+        schema, table = table_qualified.split(".", 1)
+    except Exception:
+        return 0
+    # introspect columns
+    cols = conn.execute(text("""
+        select column_name, data_type
+        from information_schema.columns
+        where table_schema=:s and table_name=:t
+    """), {"s": schema, "t": table}).mappings().all()
+    if not cols:
+        return 0
+    types = {r["column_name"]: (r["data_type"] or "").lower() for r in cols}
+    names = set(types.keys())
+
+    # project_code
+    if "project_code" in names:
+        try:
+            return int(conn.execute(text(f"select count(*) from {table_qualified} where project_code=:c"), {"c": project_code}).scalar() or 0)
+        except Exception:
+            pass
+    # id as text
+    if "id" in names and ("character" in types.get("id","") or types.get("id") == "text"):
+        try:
+            return int(conn.execute(text(f"select count(*) from {table_qualified} where id=:c"), {"c": project_code}).scalar() or 0)
+        except Exception:
+            pass
+    # project_id
+    if "project_id" in names:
+        pid = _get_project_pk(conn, project_code)
+        if pid is not None:
+            try:
+                return int(conn.execute(text(f"select count(*) from {table_qualified} where project_id=:p"), {"p": pid}).scalar() or 0)
+            except Exception:
+                pass
+    # id as int (project FK)
+    if "id" in names and "integer" in types.get("id",""):
+        pid = _get_project_pk(conn, project_code)
+        if pid is not None:
+            try:
+                return int(conn.execute(text(f"select count(*) from {table_qualified} where id=:p"), {"p": pid}).scalar() or 0)
+            except Exception:
+                pass
+    return 0
+
+def _guess_table_for_section(conn, sec_no: int, project_code: str):
+    """
+    If SECTION_TABLE[sec_no] is wrong or empty for this project, guess a better table by:
+      - scanning all pqp.* tables
+      - preferring names containing section keywords
+      - requiring row count > 0 for this project
+    Returns table name or None.
+    """
+    cand_kw = [k.lower() for k in SECTION_KEYWORDS.get(sec_no, [])]
+    if not cand_kw:
+        return None
+
+    best_tbl, best_score, best_count = None, -1, 0
+    for tbl in _list_pqp_tables(conn):
+        tname = tbl.split(".",1)[1].lower()
+        # must look relevant by name
+        score = sum(1 for k in cand_kw if k in tname)
+        if score <= 0:
+            continue
+        cnt = _count_rows_for_table(conn, tbl, project_code)
+        if cnt > 0 and (score > best_score or (score == best_score and cnt > best_count)):
+            best_tbl, best_score, best_count = tbl, score, cnt
+
+    return best_tbl
+
+
+

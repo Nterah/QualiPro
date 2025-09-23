@@ -1,34 +1,20 @@
-{# app/pqp/templates/pqp_form_sections/08_closeout_feedback.html #}
-<div class="card mb-4">
-  <div class="card-header bg-secondary text-white">
-    <h5 class="mb-0">Section 8: Close-Out & Feedback</h5>
-  </div>
+<div class="card">
+  <div class="card-header fw-bold bg-secondary text-white">Section 8: Close-Out & Feedback</div>
   <div class="card-body">
-    <div class="form-group">
-      <label for="closeout_summary">Project Close-Out Summary</label>
-      <textarea name="closeout_summary" id="closeout_summary" class="form-control" rows="4" required>{{ pqp_detail.closeout_summary or '' }}</textarea>
+    <div class="mb-3">
+      <label class="form-label">Project Close-Out Summary</label>
+      <textarea class="form-control" rows="4" placeholder="Enter summary…" disabled></textarea>
     </div>
-
-    <div class="form-group mt-3">
-      <label for="closeout_uploaded_file">Upload Close-Out Report</label>
-      <input type="file" name="closeout_uploaded_file" id="closeout_uploaded_file" class="form-control-file">
-      {% if pqp_detail.closeout_uploaded_file %}
-        <small class="form-text text-success">
-          Current file: <a href="{{ url_for('static', filename='pqp/uploads/' ~ pqp_detail.closeout_uploaded_file) }}" target="_blank">{{ pqp_detail.closeout_uploaded_file }}</a>
-        </small>
-      {% endif %}
+    <div class="mb-3">
+      <label class="form-label">Upload Close-Out Report</label>
+      <input type="file" class="form-control" disabled />
     </div>
-
-    <div class="form-group mt-3">
-      <label for="feedback_rating">Client Feedback Rating</label>
-      <select name="feedback_rating" id="feedback_rating" class="form-control" required>
-        <option value="">-- Select Rating --</option>
-        <option value="Excellent" {{ 'selected' if pqp_detail.feedback_rating == 'Excellent' else '' }}>Excellent</option>
-        <option value="Good" {{ 'selected' if pqp_detail.feedback_rating == 'Good' else '' }}>Good</option>
-        <option value="Satisfactory" {{ 'selected' if pqp_detail.feedback_rating == 'Satisfactory' else '' }}>Satisfactory</option>
-        <option value="Poor" {{ 'selected' if pqp_detail.feedback_rating == 'Poor' else '' }}>Poor</option>
+    <div>
+      <label class="form-label">Client Feedback Rating</label>
+      <select class="form-select" disabled>
+        <option selected>-- Select Rating --</option>
+        <option>Excellent</option><option>Good</option><option>Average</option><option>Poor</option>
       </select>
     </div>
   </div>
 </div>
-

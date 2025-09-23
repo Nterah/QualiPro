@@ -1,0 +1,97 @@
+{# app/pqp/templates/pqp_form_sections/_simple_table.html #}
+{# Safe defaults so the include never crashes #}
+{% set read_only = read_only if read_only is defined else False %}
+{% set show_debug_tables = show_debug_tables if show_debug_tables is defined else False %}
+{% set _hide  = ['id','project_code','project code','tenant_id','tenant id'] %}
+{% set _cols  = _cols if _cols is defined and _cols else [] %}
+{% set _rows  = _rows if _rows is defined and _rows else [] %}
+{% set _meta  = _meta if _meta is defined and _meta else {} %}
+{% set _sub   = _sub if _sub is defined else _meta.get('sub_no') %}
+
+<div class="pqp-panel p-0">
+
+  {# Header bar: show human title; hide table names unless show_debug_tables=True #}
+  <div class="d-flex justify-content-between align-items-center px-2 py-1">
+    <div class="small text-muted">
+      {% if _meta.get('title') %}<strong>{{ _meta.title }}</strong>{% endif %}
+      {% if show_debug_tables and _meta.get('table') %}
+        <span class="ms-2 badge text-bg-secondary">{{ _meta.table }}{% if _meta.get('guessed') %} (auto){% endif %}</span>
+      {% endif %}
+    </div>
+
+    {# Add row: only when not read-only *and* we know the sub number #}
+    {% if not read_only and _sub %}
+      <form method="post" class="d-inline" action="{{ url_for('pqp.pqp_ui_add_row', code=code, sub_no=_sub|int) }}">
+        {% for c in _cols if c|lower not in _hide %}
+          <input type="text" name="{{ c }}" placeholder="{{ c }}" class="form-control form-control-sm d-inline w-auto me-1" />
+        {% endfor %}
+        <button class="btn btn-sm btn-primary">Add</button>
+      </form>
+    {% endif %}
+  </div>
+
+  <div class="table-responsive">
+    <table class="table table-sm table-striped table-hover mb-0">
+      <thead class="table-light">
+        <tr>
+          {% for c in _cols if c|lower not in _hide %}
+            <th>{{ c }}</th>
+          {% endfor %}
+          {% if not read_only and _sub %}<th class="text-end">Actions</th>{% endif %}
+        </tr>
+      </thead>
+      <tbody>
+        {% if _rows and _cols %}
+          {% for r in _rows %}
+            <tr>
+              {% for c in _cols if c|lower not in _hide %}
+                <td data-k="{{ c }}">{{ r.get(c, '') }}</td>
+              {% endfor %}
+              {% if not read_only and _sub %}
+                <td class="text-end">
+                  {# Inline Edit (details disclosure) #}
+                  <details class="d-inline-block me-1">
+                    <summary class="btn btn-sm btn-outline-secondary">Edit</summary>
+                    <form method="post"
+                          action="{{ url_for('pqp.pqp_ui_edit_row',
+                                             code=code,
+                                             sub_no=_sub|int,
+                                             rid=r.get('id') or r.get('row_id') or '') }}"
+                          class="mt-2 p-2 border rounded bg-light">
+                      {% for c in _cols if c|lower not in _hide %}
+                        <div class="mb-1">
+                          <label class="form-label form-label-sm">{{ c }}</label>
+                          <input type="text" name="{{ c }}" value="{{ r.get(c,'') }}"
+                                 class="form-control form-control-sm" />
+                        </div>
+                      {% endfor %}
+                      <button class="btn btn-sm btn-primary">Save</button>
+                    </form>
+                  </details>
+
+                  {# Delete #}
+                  <form method="post"
+                        action="{{ url_for('pqp.pqp_ui_delete_row',
+                                           code=code,
+                                           sub_no=_sub|int,
+                                           rid=r.get('id') or r.get('row_id') or '') }}"
+                        class="d-inline"
+                        onsubmit="return confirm('Delete this row?')">
+                    <button class="btn btn-sm btn-outline-danger">Delete</button>
+                  </form>
+                </td>
+              {% endif %}
+            </tr>
+          {% endfor %}
+        {% else %}
+          <tr>
+            <td colspan="{{ (_cols | reject('in', _hide) | list | length) + (0 if read_only or not _sub else 1) }}"
+                class="text-center text-muted">
+              No rows yet.
+            </td>
+          </tr>
+        {% endif %}
+      </tbody>
+    </table>
+  </div>
+</div>

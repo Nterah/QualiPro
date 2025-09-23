@@ -1,0 +1,46 @@
+{# Renders a single light table. Works with:
+   - locals: _cols, _rows (preferred)
+   - OR dictionaries p_cols/p_rows + sub_no (legacy)
+   Hides noisy columns automatically. #}
+
+{% set _hide = ['id','project_code','project code','tenant id','tenant_id','created at','updated at'] %}
+{% set _cols = _cols if _cols is defined and _cols else
+               (p_cols.get(sub_no) if p_cols is defined and sub_no is defined and p_cols.get(sub_no) else []) %}
+{% set _rows = _rows if _rows is defined and _rows else
+               (p_rows.get(sub_no) if p_rows is defined and sub_no is defined and p_rows.get(sub_no) else []) %}
+
+<div class="card pqp-panel mb-3 p-0">
+  <div class="d-flex justify-content-between align-items-center px-2 py-1">
+    <div class="small text-muted">Read-only</div>
+    <button type="button" class="btn btn-sm btn-outline-secondary" onclick="togglePanelEditable(this)">Make Editable</button>
+  </div>
+
+  <div class="table-responsive">
+    <table class="table table-sm qp-table align-middle">
+      <thead class="table-light">
+        <tr>
+          {% for c in _cols if c|lower not in _hide %}
+            <th>{{ c }}</th>
+          {% endfor %}
+          <th style="width:110px">Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% if _rows and _rows|length %}
+          {% for r in _rows %}
+            <tr>
+              {% for c in _cols if c|lower not in _hide %}
+                <td>
+                  {% if r is mapping %}{{ r.get(c, '') }}{% else %}{{ (r[c] if c in r else '')|default('') }}{% endif %}
+                </td>
+              {% endfor %}
+              <td><button class="btn btn-warning btn-sm">Edit</button></td>
+            </tr>
+          {% endfor %}
+        {% else %}
+          <tr><td colspan="{{ (_cols|reject('in', _hide)|list|length) + 1 }}" class="text-muted text-center">No rows yet.</td></tr>
+        {% endif %}
+      </tbody>
+    </table>
+  </div>
+</div>

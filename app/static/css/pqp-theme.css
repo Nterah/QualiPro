@@ -117,11 +117,14 @@ h3,h4{ font-weight:600; }
   border-radius: var(--qp-radius);
   overflow: hidden;
 }
+
+/* neutralize global header; we use the .qp-table variant for PQP tables */
 .table thead th{
-  background: var(--qp-charcoal);
-  color: var(--qp-white);
-  font-weight:600;
+  background: transparent;
+  color: inherit;
 }
+
+
 .table tbody tr td{ vertical-align: middle; }
 .table tbody tr:hover{ background: var(--bs-table-hover-bg); }
 
@@ -370,11 +373,37 @@ nav.navbar.qualipro-navbar .nav-link.active {
   .brand-tagline{ font-size:.84rem; }
 }
 
-/* Themed table header for PQP tables */
+/* --- PQP table visual tweaks (overrides) --- */
 .qp-table thead th{
-  background: var(--qp-charcoal) !important;  /* #2B2B2B from your palette */
-  color: #fff !important;
-  vertical-align: middle;
+  background: #F7F9FB !important;   /* light header */
+  color: #2B2B2B !important;
+  border-bottom: 1px solid #E6EAED;
+}
+
+/* subtle vertical grid lines */
+.qp-table th, .qp-table td{
+  border-right: 1px solid #EEF2F5;
+}
+.qp-table th:last-child, .qp-table td:last-child{
+  border-right: 0;
 }
 
 
+
+/* QualiPro table refinements */
+.qp-table thead th { background: var(--bs-light); color: var(--bs-body-color); border-bottom: 1px solid #e9ecef !important; }
+.qp-table th, .qp-table td { border-right: 1px solid #e9ecef; vertical-align: middle; }
+.qp-table tr:last-child td { border-bottom: 1px solid #e9ecef; }
+
+/* Hide edit action column unless editable */
+.qp-readonly .qp-edit-actions { display: none !important; }
+.qp-editable .qp-edit-actions { display: inline-block !important; }
+
+
+/* fine grid lines + lighter headers */
+.table.pqp-grid thead th { font-weight: 600; }
+.table.pqp-grid td, .table.pqp-grid th { border-right: 1px solid rgba(0,0,0,.05); }
+
+/* Section card headers */
+.section-header { border-top-left-radius: .5rem; border-top-right-radius: .5rem; }
+.bg-teal { background-color: #20c997; color: #fff; }
